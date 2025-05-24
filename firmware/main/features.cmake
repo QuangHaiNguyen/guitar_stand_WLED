@@ -14,18 +14,19 @@ option(ENABLE_EZ_SYS_ERROR      "Enable system error feature"           ON)
 option(ENABLE_EZ_QUEUE          "Enable queue feature"                  ON)
 
 # Configure Service modules
-option(ENABLE_EZ_EVENT_NOTIFIER    "Enable the Event Notifier module"       OFF)
+option(ENABLE_EZ_EVENT_NOTIFIER    "Enable the Event Notifier module"       ON)
 option(ENABLE_EZ_KERNEL            "Enable the Kernel service"              OFF)
 option(ENABLE_EZ_TASK_WORKER       "Enable the task worker"                 OFF)
-option(ENABLE_EZ_STATE_MACHINE     "Enable state machine"                   OFF)
+option(ENABLE_EZ_STATE_MACHINE     "Enable state machine"                   ON)
 
 # Configure application framework
 option(ENABLE_DATA_MODEL        "Enable the Event Notifier module"          OFF)
 option(ENABLE_EZ_CLI            "Enable command line interface"             OFF)
 option(ENABLE_EZ_RPC            "Enable remote procedure call"              OFF)
 option(ENABLE_EZ_IPC            "Enable inter process communication"        OFF)
-option(ENABLE_EZ_HAL_DRIVER     "Enable the Driver module"                  OFF)
+option(ENABLE_EZ_HAL_DRIVER     "Enable the Driver module"                  ON)
 option(ENABLE_EZ_UART           "Enable the uart driver"                    OFF)
+option(ENABLE_EZ_GPIO           "Enable the gpio driver"                    ON)
 
 option(ENABLE_EZ_OSAL               "Enable operating system abstract layer"            OFF)
 option(ENABLE_EZ_OSAL_USE_STATIC    "Enable operating system using static allocation"   OFF)
