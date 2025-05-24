@@ -10,3 +10,5 @@ project(firmware)
 include(main/features.cmake)
 
 add_subdirectory(extern/EasyEmbeddedFramework/easy_embedded)
+add_subdirectory(port/gpio)
+add_subdirectory(app/gpio)
