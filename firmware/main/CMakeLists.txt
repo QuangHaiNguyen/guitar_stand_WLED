@@ -6,6 +6,7 @@ idf_component_register(
 
 target_link_libraries(${COMPONENT_LIB} PRIVATE
     easy_embedded_lib
-    gpio_port_lib
     app_gpio_lib
+    app_tof_lib
+    app_event_bus_lib
 )

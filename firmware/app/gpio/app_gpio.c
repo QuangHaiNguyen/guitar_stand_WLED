@@ -12,6 +12,7 @@
 
 #include "app_common.h"
 #include "gpio_port.h"
+#include "app_event_bus.h"
 
 #define TASK_PRIORITY                       10
 #define TASK_STACK_SIZE                     2048
@@ -22,6 +23,7 @@
 
 static ezGpioDrvInstance_t gpio_inst;
 static ezSubject app_event;
+static ezObserver event_bus_sub;
 static volatile uint32_t button_state = BUTTON_RELEASED;
 static uint32_t button_debounce = 0;
 static uint32_t red_led_status = 0;
@@ -29,6 +31,7 @@ static uint32_t blue_led_status = 0;
 
 static void appGpio_ButtoTask(void* arg);
 static int appGpio_EventCallback(uint32_t event_code, void *param1, void *param2);
+static int appGpio_EventBusCallback(uint32_t event_code, void *param1, void *param2);
 
 bool appGpio_Init(void)
 {
@@ -82,6 +85,16 @@ bool appGpio_Init(void)
         return false;
     }
 
+    if(ezEventNotifier_CreateObserver(&event_bus_sub, appGpio_EventBusCallback) != ezSUCCESS)
+    {
+        EZERROR("Failed to create event observer");
+        return false;
+    }
+    else
+    {
+        appEventBus_Subscribe(&event_bus_sub);
+    }
+
     xTaskCreate(appGpio_ButtoTask,
         "button_task",
         TASK_STACK_SIZE, NULL,
@@ -119,14 +132,14 @@ static void appGpio_ButtoTask(void* arg)
                 EZDEBUG("Long press detected");
                 blue_led_status = !blue_led_status;
                 ezGpio_WritePin(&gpio_inst, LED_BLUE, blue_led_status);
-                ezEventNotifier_NotifyEvent(&app_event, GPIO_EVENT_TYPE_LONG_PRESS, &event_sourve, NULL);
+                ezEventNotifier_NotifyEvent(&app_event, APP_EVENT_GPIO_LONG_PRESS, &event_sourve, NULL);
             }
             else if(button_debounce > GPIO_DEBOUNCE_PRESS_TIME)
             {
                 EZDEBUG("Short press detected");
                 red_led_status = !red_led_status;
                 ezGpio_WritePin(&gpio_inst, LED_RED, red_led_status);
-                ezEventNotifier_NotifyEvent(&app_event, GPIO_EVENT_TYPE_PRESS, &event_sourve, NULL);
+                ezEventNotifier_NotifyEvent(&app_event, APP_EVENT_GPIO_PRESS, &event_sourve, NULL);
             }
             else
             {
@@ -135,5 +148,32 @@ static void appGpio_ButtoTask(void* arg)
             button_debounce = 0;
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+
+static int appGpio_EventBusCallback(uint32_t event_code, void *param1, void *param2)
+{
+    switch (event_code)
+    {
+        case APP_EVENT_LED_RED_ON:
+            EZDEBUG("Turning on red LED");
+            ezGpio_WritePin(&gpio_inst, LED_RED, EZ_GPIO_PIN_HIGH);
+            break;
+        case APP_EVENT_LED_RED_OFF:
+            EZDEBUG("Turning off red LED");
+            ezGpio_WritePin(&gpio_inst, LED_RED, EZ_GPIO_PIN_LOW);
+            break;
+        case APP_EVENT_LED_BLUE_ON:
+            EZDEBUG("Turning on blue LED");
+            ezGpio_WritePin(&gpio_inst, LED_BLUE, EZ_GPIO_PIN_HIGH);
+            break;
+        case APP_EVENT_LED_BLUE_OFF:
+            EZDEBUG("Turning off blue LED");
+            ezGpio_WritePin(&gpio_inst, LED_BLUE, EZ_GPIO_PIN_LOW);
+            break;
+        default:
+            EZDEBUG("Event bus: Unknown event %ld", event_code);
+            break;
     }
 }

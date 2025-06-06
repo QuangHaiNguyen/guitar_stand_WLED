@@ -6,12 +6,6 @@
 #include "ez_event_notifier.h"
 
 typedef enum{
-    GPIO_EVENT_TYPE_PRESS,
-    GPIO_EVENT_TYPE_LONG_PRESS,
-    GPIO_EVENT_TYPE_NONE
-}GPIO_EVENT_TYPE;
-
-typedef enum{
     GPIO_EVENT_SOURCE_BUTTON,
     GPIO_EVENT_SOURCE_NONE,
 }GPIO_EVENT_SOURCE;
