@@ -11,4 +11,7 @@ include(main/features.cmake)
 
 add_subdirectory(extern/EasyEmbeddedFramework/easy_embedded)
 add_subdirectory(port/gpio)
+add_subdirectory(port/i2c)
 add_subdirectory(app/gpio)
+add_subdirectory(app/tof)
+add_subdirectory(app/event_bus)

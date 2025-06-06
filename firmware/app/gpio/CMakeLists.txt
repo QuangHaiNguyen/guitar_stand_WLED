@@ -8,5 +8,6 @@ target_include_directories(app_gpio_lib PUBLIC
 target_link_libraries(app_gpio_lib PRIVATE
     easy_embedded_lib
     gpio_port_lib
+    app_event_bus_lib
     idf::freertos
 )

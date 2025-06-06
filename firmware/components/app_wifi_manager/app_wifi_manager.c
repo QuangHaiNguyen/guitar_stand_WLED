@@ -18,6 +18,7 @@
 #include "ez_state_machine.h"
 
 #include "app/gpio/app_gpio.h"
+#include "app_event_bus.h"
 
 
 #define WIFI_PARTITION_NAME     "wifi_manager_part"
@@ -251,11 +252,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 static int wifiManager_ButtonEventCallback(uint32_t event_code, void *param1, void *param2)
 {
-    if(event_code == GPIO_EVENT_TYPE_PRESS)
+    if(event_code == APP_EVENT_GPIO_PRESS)
     {
         //EZDEBUG("Button pressed");
     }
-    else if(event_code == GPIO_EVENT_TYPE_LONG_PRESS)
+    else if(event_code == APP_EVENT_GPIO_LONG_PRESS)
     {
         EZDEBUG("Button long pressed");
         ezSM_SetEvent(&wifi_manager_sm, SM_EVENT_START_CAPTIVE_PORTAL);
