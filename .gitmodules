@@ -1,3 +1,0 @@
-[submodule "firmware/extern/EasyEmbeddedFramework"]
-	path = firmware/extern/EasyEmbeddedFramework
-	url = https://github.com/QuangHaiNguyen/EasyEmbeddedFramework.git
