@@ -33,7 +33,6 @@
 
 #include "vl53l0x_platform_log.h"
 
-#include "ez_easy_embedded.h"
 #define DEBUG_LVL   LVL_DEBUG           /**< logging level */
 #define MOD_NAME    "platform_i2c"      /**< module name */
 #include "ez_logging.h"
@@ -66,7 +65,7 @@ char  debug_string[VL53L0X_MAX_STRING_LENGTH_PLT];
 #define STATUS_OK              0x00
 #define STATUS_FAIL            0x01
 
-static int platform_i2c_callback(uint32_t event_code, void *param1, void *param2);
+static void platform_i2c_callback(uint8_t event_code, void *param1, void *param2);
 static ezI2cDrvInstance_t instance;
 static ezI2cConfig_t i2c_config = {
     .mode = EZ_I2C_MODE_MASTER,
@@ -183,7 +182,7 @@ int32_t VL53L0X_write_multi(uint8_t address, uint8_t index, uint8_t *pdata, int3
     memcpy(&buff[1], pdata, count);
 
     // Write the data to the device
-    if(ezI2c_TransmitSync(&instance, address, buff, count + 1, 1000) == STATUS_OK)
+    if(ezI2c_TransmitSync(&instance, address, buff, count + 1, false, 1000) == STATUS_OK)
     {
         status = STATUS_OK;
     }
@@ -219,12 +218,12 @@ int32_t VL53L0X_read_multi(uint8_t address, uint8_t index, uint8_t *pdata, int32
     char   value_as_str[VL53L0X_MAX_STRING_LENGTH_PLT];
     char *pvalue_as_str;
 #endif
-    if(ezI2c_TransmitSync(&instance, address, &index, 1, 1000) != STATUS_OK)
+    if(ezI2c_TransmitSync(&instance, address, &index, 1, false, 1000) != STATUS_OK)
     {
         return STATUS_FAIL;
     }
 
-    if(ezI2c_ReceiveSync(&instance, address, pdata, count, 1000) != STATUS_OK)
+    if(ezI2c_ReceiveSync(&instance, address, pdata, count, false, 1000) != STATUS_OK)
     {
         EZERROR("Failed to read from index 0x%02X", index);
         return STATUS_FAIL;
@@ -339,9 +338,8 @@ int32_t VL53L0X_read_dword(uint8_t address, uint8_t index, uint32_t *pdata)
 
 }
 
-static int platform_i2c_callback(uint32_t event_code, void *param1, void *param2)
+static void platform_i2c_callback(uint8_t event_code, void *param1, void *param2)
 {
-    return 0;
 }
 
 #if 0

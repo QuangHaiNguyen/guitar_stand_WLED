@@ -1,6 +1,5 @@
 #include "port_i2c.h"
 
-#include "ez_easy_embedded.h"
 #define DEBUG_LVL   LVL_ERROR   /**< logging level */
 #define MOD_NAME    "hw i2c"      /**< module name */
 #include "ez_logging.h"
@@ -30,27 +29,41 @@ static i2c_config_t esp_i2c_conf;
 //static void IRAM_ATTR gpio_isr_handler(void* arg);
 
 
-static EZ_DRV_STATUS espI2c_Initialize(ezI2cConfig_t *config);
-static EZ_DRV_STATUS espI2c_TransmitSync(uint16_t address,
-                                          const uint8_t *data,
-                                          size_t length,
-                                          uint32_t timeout_millis);
+static EZ_DRV_STATUS espI2c_Initialize(ezDriver_t *driver_h, ezI2cConfig_t *config);
+static EZ_DRV_STATUS espI2c_TransmitSync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    const uint8_t *data,
+    size_t length,
+    bool send_stop,
+    uint32_t timeout_millis);
 
-static EZ_DRV_STATUS espI2c_TransmitAsync(uint16_t address,
-                                           const uint8_t *data,
-                                           size_t length);
+static EZ_DRV_STATUS espI2c_TransmitAsync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    const uint8_t *data,
+    size_t length,
+    bool send_stop);
 
-static EZ_DRV_STATUS espI2c_ReceiveSync(uint16_t address,
-                                         uint8_t *data,
-                                         size_t length,
-                                         uint32_t timeout_millis);
+static EZ_DRV_STATUS espI2c_ReceiveSync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    uint8_t *data,
+    size_t length,
+    bool send_stop,
+    uint32_t timeout_millis);
 
-static EZ_DRV_STATUS espI2c_ReceiveAsync(uint16_t address,
-                                          uint8_t *data,
-                                          size_t length);
+static EZ_DRV_STATUS espI2c_ReceiveAsync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    uint8_t *data,
+    size_t length,
+    bool send_stop);
 
-static EZ_DRV_STATUS espI2c_Probe(uint16_t address,
-                                  uint32_t timeout_millis);
+static EZ_DRV_STATUS espI2c_Probe(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    uint32_t timeout_millis);
 
 bool portI2c_Init(void)
 {
@@ -74,8 +87,9 @@ bool portI2c_Init(void)
 }
 
 
-static EZ_DRV_STATUS espI2c_Initialize(ezI2cConfig_t *config)
+static EZ_DRV_STATUS espI2c_Initialize(ezDriver_t *driver_h, ezI2cConfig_t *config)
 {
+    (void)driver_h; // Unused parameter
     esp_err_t err = ESP_OK;
     EZTRACE("espI2c_Initialize()");
     if(config == NULL)
@@ -112,11 +126,14 @@ static EZ_DRV_STATUS espI2c_Initialize(ezI2cConfig_t *config)
     return STATUS_OK;
 }
 
-static EZ_DRV_STATUS espI2c_TransmitSync(uint16_t address,
-                                          const uint8_t *data,
-                                          size_t length,
-                                          uint32_t timeout_millis)
+static EZ_DRV_STATUS espI2c_TransmitSync(
+    ezDriver_t *driver_h, uint16_t address,
+    const uint8_t *data,
+    size_t length,
+    bool send_stop,
+    uint32_t timeout_millis)
 {
+    (void)driver_h; // Unused parameter
     EZTRACE("espI2c_TransmitSync(address = %d, length = %d)", address, length);
     if (data == NULL || length == 0) {
         EZERROR("Invalid data or length");
@@ -141,18 +158,26 @@ static EZ_DRV_STATUS espI2c_TransmitSync(uint16_t address,
     return STATUS_ERR_GENERIC;
 }
 
-static EZ_DRV_STATUS espI2c_TransmitAsync(uint16_t address,
-                                           const uint8_t *data,
-                                           size_t length)
+static EZ_DRV_STATUS espI2c_TransmitAsync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    const uint8_t *data,
+    size_t length,
+    bool send_stop)
 {
+    (void)driver_h; // Unused parameter
     return STATUS_ERR_GENERIC;
 }
 
-static EZ_DRV_STATUS espI2c_ReceiveSync(uint16_t address,
-                                         uint8_t *data,
-                                         size_t length,
-                                         uint32_t timeout_millis)
+static EZ_DRV_STATUS espI2c_ReceiveSync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    uint8_t *data,
+    size_t length,
+    bool send_stop,
+    uint32_t timeout_millis)
 {
+    (void)driver_h; // Unused parameter
     EZTRACE("espI2c_ReceiveSync(address = %d, length = %d)", address, length);
     if (data == NULL || length == 0) {
         EZERROR("Invalid data or length");
@@ -176,16 +201,23 @@ static EZ_DRV_STATUS espI2c_ReceiveSync(uint16_t address,
     return STATUS_ERR_GENERIC;
 }
 
-static EZ_DRV_STATUS espI2c_ReceiveAsync(uint16_t address,
-                                          uint8_t *data,
-                                          size_t length)
+static EZ_DRV_STATUS espI2c_ReceiveAsync(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    uint8_t *data,
+    size_t length,
+    bool send_stop)
 {
+    (void)driver_h; // Unused parameter
     return STATUS_ERR_GENERIC;
 }
 
-static EZ_DRV_STATUS espI2c_Probe(uint16_t address,
-                                  uint32_t timeout_millis)
+static EZ_DRV_STATUS espI2c_Probe(
+    ezDriver_t *driver_h,
+    uint16_t address,
+    uint32_t timeout_millis)
 {
+    (void)driver_h; // Unused parameter
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, (address << 1) | I2C_MASTER_WRITE, true);
