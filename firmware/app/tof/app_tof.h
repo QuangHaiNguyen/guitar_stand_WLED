@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "ez_event_notifier.h"
+#include "ez_event_bus.h"
 
 #define TOF_SENSOR_I2C_ADDRESS 0x29  // Example I2C address for the TOF sensor
 

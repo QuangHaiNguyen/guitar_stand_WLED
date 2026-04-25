@@ -1,5 +1,4 @@
 
-#include "ez_easy_embedded.h"
 #define DEBUG_LVL   LVL_TRACE   /**< logging level */
 #define MOD_NAME    "main"       /**< module name */
 #include "ez_logging.h"
@@ -13,7 +12,6 @@
 
 void app_main(void)
 {
-    ezEasyEmbedded_Initialize();
     if(appEventBus_Init() == false)
     {
         EZERROR("Failed to initialize event bus");

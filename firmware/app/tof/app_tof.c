@@ -2,9 +2,8 @@
 #include "app_tof.h"
 #include "vl53l0x_api.h"
 
-#include "ez_easy_embedded.h"
 #define DEBUG_LVL   LVL_DEBUG   /**< logging level */
-#define MOD_NAME    "app_i2c"       /**< module name */
+#define MOD_NAME    "app tof"    /**< module name */
 #include "ez_logging.h"
 #include "ez_i2c.h"
 
@@ -29,10 +28,6 @@ static void print_range_status(VL53L0X_RangingMeasurementData_t* pRangingMeasure
 static VL53L0X_Error calibration(VL53L0X_Dev_t *pMyDevice);
 static VL53L0X_Error setupDevice(VL53L0X_Dev_t *pMyDevice);
 static VL53L0X_Dev_t MyDevice;
-
-static uint8_t threshold_count[2] = {0, 0};
-
-
 
 
 VL53L0X_Error rangingTest(VL53L0X_Dev_t *pMyDevice)
@@ -142,6 +137,8 @@ bool appTof_Init(void)
 
 static void appTof_Task(void* arg)
 {
+    uint8_t count = 0;
+    uint32_t sum_distance_mm = 0;
     while(1)
     {
         VL53L0X_Error Status = VL53L0X_ERROR_NONE;
@@ -152,8 +149,10 @@ static void appTof_Task(void* arg)
         //print_pal_error(Status);
         //print_range_status(&RangingMeasurementData);
 
+        #if 0
         if(Status == VL53L0X_ERROR_NONE && RangingMeasurementData.RangeStatus == 0)
         {
+            
             EZDEBUG("Measured distance: %i mm", RangingMeasurementData.RangeMilliMeter);
             // Check the measured distance against thresholds
             if (RangingMeasurementData.RangeMilliMeter < THRESHOLD_1_MM)
@@ -167,7 +166,8 @@ static void appTof_Task(void* arg)
                 {
                     EZDEBUG("at: %d mm", THRESHOLD_1_MM);
                     threshold_count[0] = THRESHOLD_MAX_COUNT;
-                    appEventBus_Notify(APP_EVENT_LED_BLUE_ON, NULL, NULL);
+                    bool led_on = true;
+                    appEventBus_Notify(APP_EVENT_LED_BLUE, &led_on, sizeof(led_on));
                 }
             }
             else if (RangingMeasurementData.RangeMilliMeter < THRESHOLD_2_MM)
@@ -181,7 +181,8 @@ static void appTof_Task(void* arg)
                 {
                     EZDEBUG("at: %d mm", THRESHOLD_2_MM);
                     threshold_count[1] = THRESHOLD_MAX_COUNT; // Reset count
-                    appEventBus_Notify(APP_EVENT_LED_RED_ON, NULL, NULL);
+                    bool led_on = true;
+                    appEventBus_Notify(APP_EVENT_LED_RED, &led_on, sizeof(led_on));
                 }
             }
             else
@@ -199,15 +200,56 @@ static void appTof_Task(void* arg)
 
         if(threshold_count[0] == 0)
         {
-            appEventBus_Notify(APP_EVENT_LED_BLUE_OFF, NULL, NULL);
+            bool led_on = false;
+            appEventBus_Notify(APP_EVENT_LED_BLUE, &led_on, sizeof(led_on));
         }
 
         if(threshold_count[1] == 0)
         {
-            appEventBus_Notify(APP_EVENT_LED_RED_OFF, NULL, NULL);
+            bool led_on = false;
+            appEventBus_Notify(APP_EVENT_LED_RED, &led_on, sizeof(led_on));
         }
+        #else
+        if(Status == VL53L0X_ERROR_NONE && RangingMeasurementData.RangeStatus == 0)
+        {
+            sum_distance_mm = sum_distance_mm + RangingMeasurementData.RangeMilliMeter;
+            count++;
+            if(count >= 10)
+            {
+                uint32_t avg_distance_mm = sum_distance_mm / count;
+                EZDEBUG("Average distance: %i mm", avg_distance_mm);
+                sum_distance_mm = 0;
+                count = 0;
+                if(avg_distance_mm < THRESHOLD_1_MM)
+                {
+                    bool led_blue_on = true;
+                    bool led_red_on = false;
+                    appEventBus_Notify(APP_EVENT_LED_BLUE, &led_blue_on, sizeof(led_blue_on));
+                    appEventBus_Notify(APP_EVENT_LED_RED, &led_red_on, sizeof(led_red_on));
+                }
+                else if(avg_distance_mm < THRESHOLD_2_MM)
+                {
+                    bool led_red_on = true;
+                    bool led_blue_on = false;
+                    appEventBus_Notify(APP_EVENT_LED_RED, &led_red_on, sizeof(led_red_on));
+                    appEventBus_Notify(APP_EVENT_LED_BLUE, &led_blue_on, sizeof(led_blue_on));
+                }
+                else
+                {
+                    bool led_on = false;
+                    appEventBus_Notify(APP_EVENT_LED_BLUE, &led_on, sizeof(led_on));
+                    appEventBus_Notify(APP_EVENT_LED_RED, &led_on, sizeof(led_on));
+                }
+            }
+        }
+        else
+        {
+            print_pal_error(Status);
+            print_range_status(&RangingMeasurementData);
+        }
+        #endif
 
-        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 1 second
+        vTaskDelay(50 / portTICK_PERIOD_MS); // Delay for 2 seconds
     }
 }
 

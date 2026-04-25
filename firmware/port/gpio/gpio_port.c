@@ -1,7 +1,6 @@
 #include "gpio_port.h"
 
-#include "ez_easy_embedded.h"
-#define DEBUG_LVL   LVL_ERROR   /**< logging level */
+#define DEBUG_LVL   LVL_WARNING   /**< logging level */
 #define MOD_NAME    "gpio"      /**< module name */
 #include "ez_logging.h"
 #include "ez_gpio.h"
@@ -24,11 +23,12 @@ static struct ezGpioDriver driver;
 static gpio_config_t io_conf;
 static QueueHandle_t gpio_evt_queue = NULL;
 
-static EZ_GPIO_PIN_STATE esp32Gpio_ReadPin(uint16_t pin_index);
-static EZ_DRV_STATUS esp32Gpio_WritePin(uint16_t pin_index, EZ_GPIO_PIN_STATE state);
-static EZ_DRV_STATUS esp32Gpio_Initialize(uint16_t pin_index, ezHwGpioConfig_t *config);
+static EZ_GPIO_PIN_STATE esp32Gpio_ReadPin(ezDriver_t *driver_h, uint16_t pin_index);
+static EZ_DRV_STATUS esp32Gpio_WritePin(ezDriver_t *driver_h, uint16_t pin_index, EZ_GPIO_PIN_STATE state);
+static EZ_DRV_STATUS esp32Gpio_Initialize(ezDriver_t *driver_h, uint16_t pin_index, ezHwGpioConfig_t *config);
 static void gpio_task_event_handling(void* arg);
 static void IRAM_ATTR gpio_isr_handler(void* arg);
+static gpio_event_callback_t event_callback = NULL;
 
 bool gpioPort_Init(void)
 {
@@ -66,7 +66,13 @@ bool gpioPort_Init(void)
     return true;
 }
 
-static EZ_DRV_STATUS esp32Gpio_Initialize(uint16_t pin_index, ezHwGpioConfig_t *config)
+bool gpioPort_RegisterEventCallback(gpio_event_callback_t callback)
+{
+    event_callback = callback;
+    return true;
+}
+
+static EZ_DRV_STATUS esp32Gpio_Initialize(ezDriver_t *driver_h, uint16_t pin_index, ezHwGpioConfig_t *config)
 {
     EZTRACE("esp32Gpio_Initialize(index = %d)", pin_index);
     if(pin_index >= GPIO_NUM_MAX)
@@ -133,7 +139,7 @@ static EZ_DRV_STATUS esp32Gpio_Initialize(uint16_t pin_index, ezHwGpioConfig_t *
     return STATUS_OK;
 }
 
-static EZ_GPIO_PIN_STATE esp32Gpio_ReadPin(uint16_t pin_index)
+static EZ_GPIO_PIN_STATE esp32Gpio_ReadPin(ezDriver_t *driver_h, uint16_t pin_index)
 {
     EZTRACE("esp32Gpio_ReadPin(index = %d)", pin_index);
     if(pin_index < GPIO_NUM_MAX)
@@ -145,27 +151,31 @@ static EZ_GPIO_PIN_STATE esp32Gpio_ReadPin(uint16_t pin_index)
         else
         {
             return EZ_GPIO_PIN_LOW;
+
         }
     }
     return EZ_GPIO_PIN_ERROR;
 }
 
 
-static EZ_DRV_STATUS esp32Gpio_WritePin(uint16_t pin_index, EZ_GPIO_PIN_STATE state)
+static EZ_DRV_STATUS esp32Gpio_WritePin(ezDriver_t *driver_h, uint16_t pin_index, EZ_GPIO_PIN_STATE state)
 {
     EZTRACE("esp32Gpio_WritePin(index = %d, state = %d)", pin_index, state);
     if(pin_index >= GPIO_NUM_MAX)
     {
+        EZWARNING("Invalid pin index %d", pin_index);
         return STATUS_ERR_ARG;
     }
 
     if(state == EZ_GPIO_PIN_HIGH)
     {
+        EZTRACE("Setting pin %d to HIGH", pin_index);
         gpio_set_level(pin_index, 1);
         return STATUS_OK;
     }
     else if(state == EZ_GPIO_PIN_LOW)
     {
+        EZTRACE("Setting pin %d to LOW", pin_index);
         gpio_set_level(pin_index, 0);
         return STATUS_OK;
     }
@@ -174,6 +184,8 @@ static EZ_DRV_STATUS esp32Gpio_WritePin(uint16_t pin_index, EZ_GPIO_PIN_STATE st
         EZERROR("Invalid state %d", state);
         return STATUS_ERR_ARG;
     }
+
+    EZWARNING("Failed to write pin %d with state %d", pin_index, state);
     return STATUS_ERR_GENERIC;
 }
 
@@ -184,7 +196,10 @@ static void gpio_task_event_handling(void* arg)
     for (;;) {
         if (xQueueReceive(gpio_evt_queue, &io_num, 10)) {
             pin_state = gpio_get_level(io_num);
-            ezEventNotifier_NotifyEvent(&driver.gpio_event, io_num, &pin_state, NULL);
+            if (event_callback != NULL) {
+                event_callback(io_num, pin_state);
+            }
+            driver.common.callback(&driver.common, io_num, &pin_state, NULL);
         }
     }
 }

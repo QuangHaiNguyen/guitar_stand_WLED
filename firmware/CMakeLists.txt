@@ -9,7 +9,7 @@ project(firmware)
 
 include(main/features.cmake)
 
-add_subdirectory(extern/EasyEmbeddedFramework/easy_embedded)
+add_subdirectory(extern/EasyEmbeddedFramework/src)
 add_subdirectory(port/gpio)
 add_subdirectory(port/i2c)
 add_subdirectory(app/gpio)

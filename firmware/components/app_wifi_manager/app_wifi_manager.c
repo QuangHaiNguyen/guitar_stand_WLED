@@ -10,11 +10,10 @@
 
 #include "esp_http_server.h"
 
-#include "ez_easy_embedded.h"
 #define DEBUG_LVL   LVL_TRACE   /**< logging level */
 #define MOD_NAME    "wifi_manager"       /**< module name */
 #include "ez_logging.h"
-#include "ez_event_notifier.h"
+#include "ez_event_bus.h"
 #include "ez_state_machine.h"
 
 #include "app/gpio/app_gpio.h"
@@ -57,7 +56,7 @@ typedef struct{
 extern const char captive_portal_start[] asm("_binary_captive_portal_html_start");
 extern const char captive_portal_end[] asm("_binary_captive_portal_html_end");
 
-static ezObserver button_event_observer;
+static ezEventListener_t button_event_observer;
 static uint8_t sm_event_buff[32];
 static WifiManagerContext_t context;
 
@@ -66,7 +65,7 @@ static httpd_handle_t start_webserver(httpd_handle_t* handle);
 static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err);
 static esp_err_t handle_form_submit(httpd_req_t *req);
 static esp_err_t root_get_handler(httpd_req_t *req);
-static int wifiManager_ButtonEventCallback(uint32_t event_code, void *param1, void *param2);
+static int wifiManager_ButtonEventCallback(uint32_t event_code, const void *data, size_t data_size);
 static void wifiManager_Task(void* arg);
 static void http_string_decode(char* str, size_t len);
 static bool wifiManager_LoadCredentialsFromNVS(WifiManagerContext_t *ctx);
@@ -102,7 +101,7 @@ INIT_STATE(StateError, NULL);
 bool wifi_manager_Init(void) {
     EZTRACE("Initializing WiFi Manager...");
 
-    ezEventNotifier_CreateObserver(&button_event_observer, wifiManager_ButtonEventCallback);
+    ezEventBus_CreateListener(&button_event_observer, wifiManager_ButtonEventCallback);
     appGpio_SubscribeToEvent(&button_event_observer);
 
     //Initialize NVS partition for WiFi manager
@@ -250,7 +249,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-static int wifiManager_ButtonEventCallback(uint32_t event_code, void *param1, void *param2)
+static int wifiManager_ButtonEventCallback(uint32_t event_code, const void *data, size_t data_size)
 {
     if(event_code == APP_EVENT_GPIO_PRESS)
     {

@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "ez_event_notifier.h"
+#include "ez_event_bus.h"
 
 typedef enum{
     GPIO_EVENT_SOURCE_BUTTON,
@@ -12,6 +12,6 @@ typedef enum{
 
 
 bool appGpio_Init(void);
-ezSTATUS appGpio_SubscribeToEvent(ezObserver *subcriber);
+ezSTATUS appGpio_SubscribeToEvent(ezEventListener_t *listener);
 
 #endif // APP_GPIO_H_
