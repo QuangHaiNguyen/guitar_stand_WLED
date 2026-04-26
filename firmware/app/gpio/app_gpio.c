@@ -102,14 +102,6 @@ bool appGpio_Init(void)
     return true;
 }
 
-
-ezSTATUS appGpio_SubscribeToEvent(ezEventListener_t *listener)
-{
-    //return ezEventNotifier_SubscribeToSubject(&app_event, subcriber);
-    return ezFAIL;
-}
-
-
 /**
  * @brief Generic GPIO driver callback.
  *

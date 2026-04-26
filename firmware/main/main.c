@@ -18,7 +18,7 @@ void app_main(void)
     }
 
     appGpio_Init();
-    //wifi_manager_Init();
+    wifi_manager_Init();
 
     if(appTof_Init() == false)
     {
