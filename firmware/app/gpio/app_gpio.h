@@ -34,12 +34,4 @@ typedef enum{
  */
 bool appGpio_Init(void);
 
-/**
- * @brief Subscribe a listener to GPIO-specific events.
- *
- * @param[in] listener Pointer to the listener instance to subscribe.
- * @return Current implementation returns @c ezFAIL.
- */
-ezSTATUS appGpio_SubscribeToEvent(ezEventListener_t *listener);
-
 #endif // APP_GPIO_H_

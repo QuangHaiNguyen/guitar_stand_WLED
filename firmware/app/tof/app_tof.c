@@ -15,7 +15,7 @@
 #include "app_tof.h"
 #include "vl53l0x_api.h"
 
-#define DEBUG_LVL   LVL_DEBUG   /**< logging level */
+#define DEBUG_LVL   LVL_INFO   /**< logging level */
 #define MOD_NAME    "app tof"    /**< module name */
 #include "ez_logging.h"
 #include "ez_i2c.h"
