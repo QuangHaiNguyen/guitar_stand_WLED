@@ -196,10 +196,10 @@ static void gpio_task_event_handling(void* arg)
     for (;;) {
         if (xQueueReceive(gpio_evt_queue, &io_num, 10)) {
             pin_state = gpio_get_level(io_num);
+            EZDEBUG("GPIO[%d] intr, val: %d", io_num, pin_state);
             if (event_callback != NULL) {
                 event_callback(io_num, pin_state);
             }
-            driver.common.callback(&driver.common, io_num, &pin_state, NULL);
         }
     }
 }

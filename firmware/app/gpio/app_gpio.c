@@ -1,4 +1,9 @@
 
+/**
+ * @file app_gpio.c
+ * @brief Implementation of GPIO setup, button debouncing, and LED event handling.
+ */
+
 #include "app_gpio.h"
 
 #define DEBUG_LVL   LVL_DEBUG   /**< logging level */
@@ -13,12 +18,12 @@
 #include "gpio_port.h"
 #include "app_event_bus.h"
 
-#define TASK_PRIORITY                       10
-#define TASK_STACK_SIZE                     2048
-#define GPIO_DEBOUNCE_PRESS_TIME            80
-#define GPIO_DEBOUNCE_LONG_PRESS_TIME       2000
-#define BUTTON_PRESSED                      0
-#define BUTTON_RELEASED                     1
+#define TASK_PRIORITY                       10    /**< FreeRTOS priority for button task. */
+#define TASK_STACK_SIZE                     2048  /**< Stack size (bytes) for button task. */
+#define GPIO_DEBOUNCE_PRESS_TIME            80    /**< Minimum press duration (ms) for short press. */
+#define GPIO_DEBOUNCE_LONG_PRESS_TIME       2000  /**< Minimum press duration (ms) for long press. */
+#define BUTTON_PRESSED                      0     /**< Logical level for pressed button. */
+#define BUTTON_RELEASED                     1     /**< Logical level for released button. */
 
 static ezGpioDrvInstance_t gpio_inst;
 static ezEventListener_t event_listener;
@@ -29,6 +34,7 @@ static uint32_t blue_led_status = 0;
 
 static void appGpio_ButtonTask(void* arg);
 static void appGpio_EventCallback(uint8_t event_code, void *param1, void *param2);
+static void appGpio_EventCallbackDirect(uint16_t pin_index, uint32_t pin_state);
 static int appGpio_EventBusCallback(uint32_t event_code, const void *data, size_t data_size);
 
 bool appGpio_Init(void)
@@ -87,6 +93,8 @@ bool appGpio_Init(void)
         appEventBus_Subscribe(&event_listener);
     }
 
+    gpioPort_RegisterEventCallback(appGpio_EventCallbackDirect);
+
     xTaskCreate(appGpio_ButtonTask,
         "button_task",
         TASK_STACK_SIZE, NULL,
@@ -102,13 +110,42 @@ ezSTATUS appGpio_SubscribeToEvent(ezEventListener_t *listener)
 }
 
 
+/**
+ * @brief Generic GPIO driver callback.
+ *
+ * Updates the module button state using the pin state passed via @p param1.
+ *
+ * @param[in] event_code GPIO event code (currently unused).
+ * @param[in] param1 Pointer to a @c uint32_t pin state value.
+ * @param[in] param2 Additional callback data (unused).
+ */
 static void appGpio_EventCallback(uint8_t event_code, void *param1, void *param2)
 {
     button_state = *(uint32_t*)param1;
-    EZDEBUG("got pin %ld, state %ld", event_code, button_state);
+}
+
+/**
+ * @brief Direct callback from GPIO port abstraction.
+ *
+ * @param[in] pin_index GPIO index that changed.
+ * @param[in] pin_state New logical pin state.
+ */
+static void appGpio_EventCallbackDirect(uint16_t pin_index, uint32_t pin_state)
+{
+    EZDEBUG("GPIO event callback: pin index %d, pin state %d", pin_index, pin_state);
+    button_state = pin_state;
 }
 
 
+/**
+ * @brief FreeRTOS task that debounces button input and emits press events.
+ *
+ * Polls button state every 10 ms. On release, classifies the press duration as
+ * short or long, toggles corresponding LED state, and publishes
+ * @c APP_EVENT_GPIO_PRESS or @c APP_EVENT_GPIO_LONG_PRESS.
+ *
+ * @param[in] arg Unused task argument.
+ */
 static void appGpio_ButtonTask(void* arg)
 {
     while(1){
@@ -144,28 +181,39 @@ static void appGpio_ButtonTask(void* arg)
 }
 
 
+/**
+ * @brief Application event-bus listener for LED control events.
+ *
+ * Handles @c APP_EVENT_LED_RED and @c APP_EVENT_LED_BLUE by driving the
+ * respective GPIO output pin according to the boolean payload.
+ *
+ * @param[in] event_code Application event identifier.
+ * @param[in] data Pointer to a @c bool payload indicating LED on/off state.
+ * @param[in] data_size Payload size in bytes.
+ * @return Returns 0.
+ */
 static int appGpio_EventBusCallback(uint32_t event_code, const void *data, size_t data_size)
 {
-    EZDEBUG("Received event code %d, data size %d", event_code, data_size);
+    EZTRACE("Received event code %d, data size %d", event_code, data_size);
     bool led_on = *(bool*)data;
     switch (event_code)
     {
         case APP_EVENT_LED_RED:
-            EZDEBUG("setting red LED to %s", led_on ? "ON" : "OFF");
+            EZTRACE("setting red LED to %s", led_on ? "ON" : "OFF");
             if(ezGpio_WritePin(&gpio_inst, LED_RED, led_on ? EZ_GPIO_PIN_HIGH : EZ_GPIO_PIN_LOW) != STATUS_OK)
             {
                 EZERROR("Failed to write GPIO pin");
             }
             break;
         case APP_EVENT_LED_BLUE:
-            EZDEBUG("setting blue LED to %s", led_on ? "ON" : "OFF");
+            EZTRACE("setting blue LED to %s", led_on ? "ON" : "OFF");
             if(ezGpio_WritePin(&gpio_inst, LED_BLUE, led_on ? EZ_GPIO_PIN_HIGH : EZ_GPIO_PIN_LOW) != STATUS_OK)
             {
                 EZERROR("Failed to write GPIO pin");
             }
             break;
         default:
-            EZDEBUG("Event bus: Unknown event %ld", event_code);
+            EZTRACE("Event bus: Unknown event %ld", event_code);
             break;
     }
 }
