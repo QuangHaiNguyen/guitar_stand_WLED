@@ -570,6 +570,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     }
     else if((event_base == WIFI_EVENT) && (event_id == WIFI_EVENT_STA_DISCONNECTED))
     {
+        wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
+        EZERROR("STA disconnected, reason=%d", event->reason);
         wifiManager_StopMdns();
         ezSM_SetEvent(&wifi_manager_sm, SM_EVENT_WIFI_DISCONNECTED);
     }
@@ -739,8 +741,6 @@ DEFINE_ENTRY_FUNCTION(StateInit)
         ctx->wifi_ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
     }
 
-    /* STA configuration*/
-    ctx->wifi_sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     return NULL;
 }
 
@@ -879,7 +879,6 @@ DEFINE_ENTRY_FUNCTION(StateSTA)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 
-    ctx->wifi_sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     if(wifiManager_LoadCredentialsFromNVS(ctx) == false)
     {
         EZERROR("Failed to load credentials from NVS");
@@ -938,6 +937,7 @@ DEFINE_ENTRY_FUNCTION(StateSTA)
         EZERROR("Failed to start STA");
         return &StateError;
     }
+
     return NULL;
 }
 
@@ -984,6 +984,7 @@ DEFINE_EVENT_HANDLER_FUNCTION(StateSTA)
         {
             EZERROR("Failed to connect to WiFi after %d attempts", MAX_CONNECT_RETRY);
             context.error_code = SM_ERR_DISCONNECTED;
+            appEventBus_Notify(APP_EVENT_WIFI_DISCONNECTED, (void*)&context.http_server_h, sizeof(httpd_handle_t));
             return &StateError;
         }
     }
@@ -994,6 +995,7 @@ DEFINE_EVENT_HANDLER_FUNCTION(StateSTA)
         {
             context.reconnect_count = 0;
         }
+        appEventBus_Notify(APP_EVENT_WIFI_CONNECTED, (void*)&context.http_server_h, sizeof(httpd_handle_t));
     }
     else if(event == SM_EVENT_WIFI_START)
     {

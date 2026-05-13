@@ -8,6 +8,8 @@
 #include "app_tof.h"
 #include "app_common.h"
 #include "app_event_bus.h"
+#include "app_color_picker.h"
+#include "ws2812.h"
 
 
 void app_main(void)
@@ -17,9 +19,26 @@ void app_main(void)
         EZERROR("Failed to initialize event bus");
     }
 
-    appGpio_Init();
-    wifi_manager_Init();
+    if (appColorPicker_Init() == false)
+    {
+        EZERROR("Failed to initialize color picker");
+    }
+    
+    if(appGpio_Init() == false)
+    {
+        EZERROR("Failed to initialize GPIO");
+    }
 
+    if(ws2812_Init() == false)
+    {
+        EZERROR("Failed to initialize WS2812 driver");
+    }
+
+    if(wifi_manager_Init() == false)
+    {
+        EZERROR("Failed to initialize WiFi manager");
+    }
+    
     if(appTof_Init() == false)
     {
         EZERROR("Failed to initialize TOF sensor");
