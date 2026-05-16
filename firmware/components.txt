@@ -1,0 +1,95 @@
+Executing action: size-components
+Running ninja in directory /home/haing/workspace/dev/guitar_stand_WLED/firmware/build
+Executing "ninja all"...
+[1/4] cd /home/haing/workspace/dev/guitar_stand_WLED/firmware/build && /home/haing/.espressif/python_env/idf6.0_py3.13_env/bin/python /home/haing/.espressif/v6.0-beta2/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/haing/workspace/dev/guitar_stand_WLED/firmware/build/partition_table/partition-table.bin /home/haing/workspace/dev/guitar_stand_WLED/firmware/build/firmware.bin
+firmware.bin binary size 0xfa240 bytes. Smallest app partition is 0x100000 bytes. 0x5dc0 bytes (2%) free.
+Warning: The smallest app partition is nearly full (2% free space left)!
+[2/4] Performing build step for 'bootloader'
+[1/1] cd /home/haing/workspace/dev/guitar_stand_WLED/firmware/build/bootloader && /home/haing/.espressif/python_env/idf6.0_py3.13_env/bin/python /home/haing/.espressif/v6.0-beta2/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 /home/haing/workspace/dev/guitar_stand_WLED/firmware/build/bootloader/bootloader.bin
+Bootloader binary size 0x52f0 bytes. 0x2d10 bytes (35%) free.
+[3/4] No install step for 'bootloader'
+[4/4] Completed 'bootloader'
+Running ninja in directory /home/haing/workspace/dev/guitar_stand_WLED/firmware/build
+Executing "ninja size-components"...
+[0/1] cd /home/haing/workspace/dev/guitar_stand_WLED/firmware/build && /usr/bin/cmake -D "IDF_SIZE_TOOL=/home/haing/.espressif/python_env/idf6.0_py3.13_env/bin/python;-m;esp_idf_size" -D IDF_SIZE_MODE=--archives -D MAP_FILE=/home/haing/workspace/dev/guitar_stand_WLED/firmware/build/firmware.map -D OUTPUT_JSON= -P /home/haing/.espressif/v6.0-beta2/esp-idf/tools/cmake/run_size_tool.cmake
+                                                                          Per-archive contributions to ELF file                                                                          
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Archive File                    ┃ Total Size ┃  DRAM ┃ .bss ┃ .data ┃ .text ┃ Flash Code ┃  .text ┃ Flash Data ┃ .tdata ┃ .rodata ┃ .appdesc ┃ RTC SLOW ┃ .rtc_reserved ┃ .force_slow ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ libnet80211.a                   │     152616 │ 12682 │ 7678 │   936 │  4068 │     126768 │ 126768 │      13166 │      0 │   13166 │        0 │        0 │             0 │           0 │
+│ liblwip.a                       │     109872 │  2482 │ 2470 │    12 │     0 │     103524 │ 103524 │       3866 │      0 │    3866 │        0 │        0 │             0 │           0 │
+│ libbuiltin.a                    │      91974 │    68 │   60 │     8 │     0 │      73964 │  73964 │      17942 │      0 │   17942 │        0 │        0 │             0 │           0 │
+│ libwpa_supplicant.a             │      82542 │  1338 │ 1330 │     8 │     0 │      79652 │  79652 │       1552 │      0 │    1552 │        0 │        0 │             0 │           0 │
+│ libesp_stdio.a                  │      77086 │    20 │   20 │     0 │     0 │        518 │    518 │      76548 │      0 │   76548 │        0 │        0 │             0 │           0 │
+│ libpp.a                         │      68422 │ 19732 │ 1262 │  2644 │ 15826 │      44776 │  44776 │       3914 │      0 │    3914 │        0 │        0 │             0 │           0 │
+│ libvl53l0x_lib.a                │      42359 │  1486 │  776 │   710 │     0 │      39458 │  39458 │       1415 │      0 │    1415 │        0 │        0 │             0 │           0 │
+│ libespressif__mdns.a            │      40347 │  2158 │ 2110 │    48 │     0 │      37404 │  37404 │        785 │      0 │     785 │        0 │        0 │             0 │           0 │
+│ libphy.a                        │      36259 │  5743 │   87 │  1312 │  4344 │      30516 │  30516 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libesp_hw_support.a             │      27926 │  7057 │  145 │   172 │  6740 │      19930 │  19930 │        879 │      0 │     879 │        0 │       60 │            24 │          36 │
+│ libtfpsacrypto.a                │      25009 │   542 │  380 │    80 │    82 │      24170 │  24170 │        297 │      0 │     297 │        0 │        0 │             0 │           0 │
+│ libfreertos.a                   │      20028 │  6068 │ 2240 │    96 │  3732 │      12646 │  12646 │       1314 │      0 │    1314 │        0 │        0 │             0 │           0 │
+│ libhttp_parser.a                │      17180 │     0 │    0 │     0 │     0 │      16428 │  16428 │        752 │      0 │     752 │        0 │        0 │             0 │           0 │
+│ libnvs_flash.a                  │      16780 │    24 │   24 │     0 │     0 │      16508 │  16508 │        248 │      0 │     248 │        0 │        0 │             0 │           0 │
+│ libspi_flash.a                  │      14141 │ 11836 │   18 │  1754 │ 10064 │       1308 │   1308 │        997 │      0 │     997 │        0 │        0 │             0 │           0 │
+│ libc.a                          │      14074 │     4 │    0 │     4 │     0 │      12606 │  12606 │       1464 │      0 │    1464 │        0 │        0 │             0 │           0 │
+│ libheap.a                       │      13656 │  8992 │    8 │     4 │  8980 │       3906 │   3906 │        758 │      0 │     758 │        0 │        0 │             0 │           0 │
+│ libesp_driver_spi.a             │      13477 │  4199 │    8 │   131 │  4060 │       8758 │   8758 │        520 │      0 │     520 │        0 │        0 │             0 │           0 │
+│ libesp_system.a                 │      11811 │  1707 │  138 │    49 │  1520 │       9554 │   9554 │        550 │      0 │     550 │        0 │        0 │             0 │           0 │
+│ libesp_http_server.a            │      11639 │     0 │    0 │     0 │     0 │      11300 │  11300 │        339 │      0 │     339 │        0 │        0 │             0 │           0 │
+│ libapp_wifi_manager.a           │      11004 │   661 │  561 │   100 │     0 │       8530 │   8530 │       1813 │      0 │    1813 │        0 │        0 │             0 │           0 │
+│ libapp_color_picker.a           │      10652 │    17 │   17 │     0 │     0 │       1364 │   1364 │       9271 │      0 │    9271 │        0 │        0 │             0 │           0 │
+│ libesp_netif.a                  │       9954 │    37 │   29 │     8 │     0 │       9686 │   9686 │        231 │      0 │     231 │        0 │        0 │             0 │           0 │
+│ libhal.a                        │       8338 │  5934 │    5 │  3429 │  2500 │       2346 │   2346 │         58 │      0 │      58 │        0 │        0 │             0 │           0 │
+│ libdriver.a                     │       7879 │  1159 │    5 │    16 │  1138 │       6378 │   6378 │        342 │      0 │     342 │        0 │        0 │             0 │           0 │
+│ libesp_driver_gpio.a            │       7672 │   298 │    0 │    36 │   262 │       6680 │   6680 │        694 │      0 │     694 │        0 │        0 │             0 │           0 │
+│ libez_utilities_lib.a           │       7161 │  2048 │ 2048 │     0 │     0 │       5026 │   5026 │         87 │      0 │      87 │        0 │        0 │             0 │           0 │
+│ libesp_wifi.a                   │       6098 │   837 │   43 │   480 │   314 │       4438 │   4438 │        823 │      0 │     823 │        0 │        0 │             0 │           0 │
+│ libesp_libc.a                   │       5900 │  3860 │  540 │   324 │  2996 │       1888 │   1888 │        152 │     16 │     136 │        0 │        0 │             0 │           0 │
+│ libvfs.a                        │       5877 │   236 │   44 │   192 │     0 │       5502 │   5502 │        139 │      0 │     139 │        0 │        0 │             0 │           0 │
+│ libesp_mm.a                     │       4990 │  1669 │   48 │   103 │  1518 │       3132 │   3132 │        189 │      0 │     189 │        0 │        0 │             0 │           0 │
+│ libesp_hal_mspi.a               │       4942 │  4310 │    0 │    36 │  4274 │        632 │    632 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libesp_ringbuf.a                │       4855 │  3454 │    0 │     0 │  3454 │        978 │    978 │        423 │      0 │     423 │        0 │        0 │             0 │           0 │
+│ libesp_event.a                  │       4615 │     4 │    4 │     0 │     0 │       4448 │   4448 │        163 │      0 │     163 │        0 │        0 │             0 │           0 │
+│ libesp_phy.a                    │       3773 │   306 │   43 │     9 │   254 │       3168 │   3168 │        299 │      0 │     299 │        0 │        0 │             0 │           0 │
+│ libez_hal_lib.a                 │       3566 │    16 │    0 │    16 │     0 │       3390 │   3390 │        160 │      0 │     160 │        0 │        0 │             0 │           0 │
+│ libesp_driver_uart.a            │       3553 │   112 │   24 │    88 │     0 │       3146 │   3146 │        295 │      0 │     295 │        0 │        0 │             0 │           0 │
+│ libesp_timer.a                  │       3476 │  1566 │   36 │    16 │  1514 │       1806 │   1806 │        104 │      0 │     104 │        0 │        0 │             0 │           0 │
+│ libesp_hal_gpspi.a              │       2944 │  2582 │    0 │    20 │  2562 │        290 │    290 │         72 │      0 │      72 │        0 │        0 │             0 │           0 │
+│ libespressif__led_strip.a       │       2896 │     0 │    0 │     0 │     0 │       2720 │   2720 │        176 │      0 │     176 │        0 │        0 │             0 │           0 │
+│ libesp_driver_usb_serial_jtag.a │       2578 │   167 │   17 │    48 │   102 │       2270 │   2270 │        141 │      0 │     141 │        0 │        0 │             0 │           0 │
+│ libesp_partition.a              │       2394 │     8 │    8 │     0 │     0 │       2218 │   2218 │        168 │      0 │     168 │        0 │        0 │             0 │           0 │
+│ libefuse.a                      │       2229 │    80 │    4 │    76 │     0 │       1870 │   1870 │        279 │      0 │     279 │        0 │        0 │             0 │           0 │
+│ liblog.a                        │       2098 │   738 │  276 │     8 │   454 │       1312 │   1312 │         48 │      0 │      48 │        0 │        0 │             0 │           0 │
+│ libapp_tof_lib.a                │       2079 │   388 │  388 │     0 │     0 │       1470 │   1470 │        221 │      0 │     221 │        0 │        0 │             0 │           0 │
+│ libstdc++.a                     │       2050 │    33 │   25 │     8 │     0 │       1658 │   1658 │        359 │      0 │     359 │        0 │        0 │             0 │           0 │
+│ libws2812_lib.a                 │       1972 │    16 │   16 │     0 │     0 │       1382 │   1382 │        574 │      0 │     574 │        0 │        0 │             0 │           0 │
+│ libi2c_port_lib.a               │       1888 │    80 │   80 │     0 │     0 │       1476 │   1476 │        332 │      0 │     332 │        0 │        0 │             0 │           0 │
+│ libesp_common.a                 │       1848 │     0 │    0 │     0 │     0 │         58 │     58 │       1790 │      0 │    1790 │        0 │        0 │             0 │           0 │
+│ libapp_gpio_lib.a               │       1705 │    36 │   32 │     4 │     0 │       1312 │   1312 │        357 │      0 │     357 │        0 │        0 │             0 │           0 │
+│ libesp_hal_ana_conv.a           │       1656 │     0 │    0 │     0 │     0 │       1656 │   1656 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libgpio_port_lib.a              │       1645 │   134 │   80 │     0 │    54 │       1306 │   1306 │        205 │      0 │     205 │        0 │        0 │             0 │           0 │
+│ libapp_event_bus_lib.a          │       1572 │  1064 │ 1064 │     0 │     0 │        380 │    380 │        128 │      0 │     128 │        0 │        0 │             0 │           0 │
+│ libesp_hal_i2c.a                │       1518 │   300 │    0 │     0 │   300 │       1206 │   1206 │         12 │      0 │      12 │        0 │        0 │             0 │           0 │
+│ libesp_hal_dma.a                │       1510 │   556 │    0 │     4 │   552 │        954 │    954 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libez_event_bus_lib.a           │       1477 │     0 │    0 │     0 │     0 │       1260 │   1260 │        217 │      0 │     217 │        0 │        0 │             0 │           0 │
+│ libriscv.a                      │       1296 │  1116 │  256 │     0 │   860 │        130 │    130 │         50 │      0 │      50 │        0 │        0 │             0 │           0 │
+│ libez_state_machine_lib.a       │       1248 │     0 │    0 │     0 │     0 │       1098 │   1098 │        150 │      0 │     150 │        0 │        0 │             0 │           0 │
+│ libesp_hal_wdt.a                │       1197 │  1197 │    0 │    21 │  1176 │          0 │      0 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libpthread.a                    │       1107 │     4 │    4 │     0 │     0 │       1036 │   1036 │         67 │      0 │      67 │        0 │        0 │             0 │           0 │
+│ libbootloader_support.a         │       1000 │   914 │    0 │     0 │   914 │         46 │     46 │         40 │      0 │      40 │        0 │        0 │             0 │           0 │
+│ libesp_app_format.a             │        804 │    10 │   10 │     0 │     0 │        530 │    530 │        264 │      0 │       8 │      256 │        0 │             0 │           0 │
+│ libsoc.a                        │        552 │     0 │    0 │     0 │     0 │          0 │      0 │        552 │      0 │     552 │        0 │        0 │             0 │           0 │
+│ libesp_security.a               │        446 │     8 │    8 │     0 │     0 │        430 │    430 │          8 │      0 │       8 │        0 │        0 │             0 │           0 │
+│ libesp_hal_gpio.a               │        372 │     0 │    0 │     0 │     0 │        344 │    344 │         28 │      0 │      28 │        0 │        0 │             0 │           0 │
+│ libcore.a                       │        366 │     9 │    9 │     0 │     0 │        314 │    314 │         43 │      0 │      43 │        0 │        0 │             0 │           0 │
+│ libmain.a                       │        324 │     0 │    0 │     0 │     0 │        324 │    324 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libesp_coex.a                   │        296 │   120 │    0 │     0 │   120 │        176 │    176 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libapp_update.a                 │        232 │     4 │    4 │     0 │     0 │        198 │    198 │         30 │      0 │      30 │        0 │        0 │             0 │           0 │
+│ libmesh.a                       │         64 │     4 │    4 │     0 │     0 │         60 │     60 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libcxx.a                        │         60 │     0 │    0 │     0 │     0 │         60 │     60 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libesp_hal_uart.a               │         56 │     0 │    0 │     0 │     0 │         56 │     56 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libmbedtls.a                    │         32 │     0 │    0 │     0 │     0 │         24 │     24 │          8 │      0 │       8 │        0 │        0 │             0 │           0 │
+│ libesp_eth.a                    │          4 │     0 │    0 │     0 │     0 │          0 │      0 │          4 │      0 │       4 │        0 │        0 │             0 │           0 │
+│ libespnow.a                     │          3 │     3 │    0 │     3 │     0 │          0 │      0 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+│ libnvs_sec_provider.a           │          2 │     0 │    0 │     0 │     0 │          2 │      2 │          0 │      0 │       0 │        0 │        0 │             0 │           0 │
+└─────────────────────────────────┴────────────┴───────┴──────┴───────┴───────┴────────────┴────────┴────────────┴────────┴─────────┴──────────┴──────────┴───────────────┴─────────────┘
