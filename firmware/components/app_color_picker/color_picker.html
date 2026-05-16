@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>WS2812 LED Color Picker</title>
+	<style>
+		:root {
+			--bg: #f7f8fb;
+			--panel: #ffffff;
+			--text: #20242b;
+			--muted: #5d6675;
+			--line: #d9deea;
+			--accent: #0f766e;
+			--danger: #b42318;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			font-family: "Segoe UI", Tahoma, sans-serif;
+			color: var(--text);
+			background: linear-gradient(180deg, #f1f6fb 0%, #f8f7f2 100%);
+			padding:
+				calc(10px + env(safe-area-inset-top))
+				calc(10px + env(safe-area-inset-right))
+				calc(14px + env(safe-area-inset-bottom))
+				calc(10px + env(safe-area-inset-left));
+		}
+
+		.app {
+			max-width: 520px;
+			margin: 0 auto;
+			background: var(--panel);
+			border: 1px solid var(--line);
+			border-radius: 10px;
+			padding: 12px;
+		}
+
+		h1 {
+			font-size: 18px;
+			margin: 0 0 10px;
+		}
+
+		.controls {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 8px;
+			align-items: end;
+			margin-bottom: 10px;
+		}
+
+		.field {
+			display: grid;
+			gap: 4px;
+		}
+
+		label {
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		input[type="number"],
+		button {
+			border: 1px solid var(--line);
+			border-radius: 7px;
+			padding: 8px 10px;
+			font: inherit;
+			font-size: 16px;
+			background: #fff;
+			color: var(--text);
+		}
+
+		input[type="color"] {
+			width: 100%;
+			height: 44px;
+			border: 1px solid var(--line);
+			border-radius: 7px;
+			background: #fff;
+			padding: 2px;
+		}
+
+		button {
+			cursor: pointer;
+			min-height: 44px;
+		}
+
+		.btn-primary {
+			background: var(--accent);
+			color: #fff;
+			border-color: var(--accent);
+			font-weight: 600;
+		}
+
+		.hint {
+			margin: 0 0 8px;
+			color: var(--muted);
+			font-size: 13px;
+		}
+
+		.list {
+			border: 1px solid var(--line);
+			border-radius: 8px;
+			padding: 6px;
+			max-height: min(62dvh, 520px);
+			overflow: auto;
+			background: #fcfcfe;
+			touch-action: pan-y;
+			-webkit-overflow-scrolling: touch;
+			user-select: none;
+		}
+
+		.led-row {
+			display: grid;
+			grid-template-columns: 56px 1fr;
+			gap: 8px;
+			align-items: center;
+			padding: 4px;
+		}
+
+		.led-label {
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		.led-cell {
+			width: 42px;
+			height: 42px;
+			border: 1px solid #9ba4b3;
+			border-radius: 4px;
+			background: rgb(0, 0, 0);
+		}
+
+		.status {
+			min-height: 18px;
+			margin: 8px 0 0;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.status.error {
+			color: var(--danger);
+		}
+
+		@media (max-width: 480px) {
+			.app {
+				padding: 10px;
+				border-radius: 8px;
+			}
+
+			.controls {
+				grid-template-columns: 1fr;
+				gap: 10px;
+			}
+
+			.controls > button {
+				width: 100%;
+			}
+
+			.led-row {
+				grid-template-columns: 58px 1fr;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="app">
+		<h1>WS2812 LED Color Picker</h1>
+
+		<div class="controls">
+			<div class="field">
+				<label for="ledCount">Number of LEDs (1-50)</label>
+				<input id="ledCount" type="number" min="1" max="50" value="16" inputmode="numeric">
+			</div>
+			<button id="applyCount" type="button">Apply</button>
+
+			<div class="field">
+				<label for="picker">Pick color</label>
+				<input id="picker" type="color" value="#00ff80">
+			</div>
+			<button id="sendBtn" class="btn-primary" type="button">Send</button>
+		</div>
+
+		<p class="hint">Tap one LED to color it. Hold and drag to paint multiple LEDs.</p>
+		<div id="ledList" class="list" aria-label="LED strip"></div>
+		<p id="status" class="status" aria-live="polite"></p>
+	</main>
+
+	<script>
+		(function () {
+			var MAX_LEDS = 50;
+			var SEND_URL = "/api/led/colors";
+
+			var ledCountInput = document.getElementById("ledCount");
+			var applyCountBtn = document.getElementById("applyCount");
+			var pickerInput = document.getElementById("picker");
+			var sendBtn = document.getElementById("sendBtn");
+			var ledList = document.getElementById("ledList");
+			var statusEl = document.getElementById("status");
+
+			var ledColors = [];
+			var isPainting = false;
+			var activePointerId = null;
+			var currentColor = hexToRgb(pickerInput.value);
+
+			function clampCount(value) {
+				if (isNaN(value)) return 1;
+				if (value < 1) return 1;
+				if (value > MAX_LEDS) return MAX_LEDS;
+				return Math.floor(value);
+			}
+
+			function setStatus(message, isError) {
+				statusEl.textContent = message;
+				statusEl.className = isError ? "status error" : "status";
+			}
+
+			function hexToRgb(hex) {
+				var clean = hex.charAt(0) === "#" ? hex.slice(1) : hex;
+				var value = parseInt(clean, 16);
+				if (clean.length !== 6 || isNaN(value)) {
+					return { r: 0, g: 0, b: 0 };
+				}
+				return {
+					r: (value >> 16) & 255,
+					g: (value >> 8) & 255,
+					b: value & 255
+				};
+			}
+
+			function rgbToCss(rgb) {
+				return "rgb(" + rgb.r + ", " + rgb.g + ", " + rgb.b + ")";
+			}
+
+			function buildColors(count, previous) {
+				var next = [];
+				for (var i = 0; i < count; i++) {
+					if (previous && previous[i]) {
+						next.push({ r: previous[i].r, g: previous[i].g, b: previous[i].b });
+					} else {
+						next.push({ r: 0, g: 0, b: 0 });
+					}
+				}
+				return next;
+			}
+
+			function paintCell(cell) {
+				if (!cell) return;
+				var index = Number(cell.dataset.index);
+				if (isNaN(index) || !ledColors[index]) return;
+
+				var old = ledColors[index];
+				if (old.r === currentColor.r && old.g === currentColor.g && old.b === currentColor.b) {
+					return;
+				}
+
+				ledColors[index] = { r: currentColor.r, g: currentColor.g, b: currentColor.b };
+				cell.style.backgroundColor = rgbToCss(currentColor);
+			}
+
+			function renderLedList() {
+				var count = ledColors.length;
+				ledList.innerHTML = "";
+
+				for (var i = 0; i < count; i++) {
+					var row = document.createElement("div");
+					row.className = "led-row";
+
+					var label = document.createElement("span");
+					label.className = "led-label";
+					label.textContent = "LED " + i;
+
+					var cell = document.createElement("button");
+					cell.type = "button";
+					cell.className = "led-cell";
+					cell.dataset.index = String(i);
+					cell.style.backgroundColor = rgbToCss(ledColors[i]);
+					cell.setAttribute("aria-label", "Set color for LED " + i);
+
+					row.appendChild(label);
+					row.appendChild(cell);
+					ledList.appendChild(row);
+				}
+			}
+
+			function applyCount() {
+				var count = clampCount(Number(ledCountInput.value));
+				var previous = ledColors;
+				ledCountInput.value = String(count);
+				ledColors = buildColors(count, previous);
+				renderLedList();
+				setStatus("Prepared " + count + " LEDs", false);
+			}
+
+			function getCellFromPointer(event) {
+				var element = document.elementFromPoint(event.clientX, event.clientY);
+				if (!element) return null;
+				return element.closest(".led-cell");
+			}
+
+			async function sendColors() {
+				var payload = new Uint8Array(ledColors.length * 3);
+				for (var i = 0; i < ledColors.length; i++) {
+					var c = ledColors[i] || { r: 0, g: 0, b: 0 };
+					var offset = i * 3;
+					payload[offset] = c.r & 255;
+					payload[offset + 1] = c.g & 255;
+					payload[offset + 2] = c.b & 255;
+				}
+
+				sendBtn.disabled = true;
+				setStatus("Sending " + ledColors.length + " LEDs...", false);
+
+				try {
+					var response = await fetch(SEND_URL, {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/octet-stream"
+						},
+						body: payload
+					});
+
+					if (!response.ok) {
+						throw new Error("HTTP " + response.status);
+					}
+
+					setStatus("Sent successfully", false);
+				} catch (error) {
+					setStatus("Send failed: " + error.message, true);
+				} finally {
+					sendBtn.disabled = false;
+				}
+			}
+
+			applyCountBtn.addEventListener("click", applyCount);
+
+			pickerInput.addEventListener("input", function () {
+				currentColor = hexToRgb(pickerInput.value);
+			});
+
+			ledList.addEventListener("pointerdown", function (event) {
+				var cell = event.target.closest(".led-cell");
+				if (!cell) return;
+
+				event.preventDefault();
+				isPainting = true;
+				activePointerId = event.pointerId;
+				ledList.style.touchAction = "none";
+				if (ledList.setPointerCapture) {
+					ledList.setPointerCapture(event.pointerId);
+				}
+				paintCell(cell);
+			});
+
+			window.addEventListener("pointermove", function (event) {
+				if (!isPainting || event.pointerId !== activePointerId) return;
+				paintCell(getCellFromPointer(event));
+			});
+
+			window.addEventListener("pointerup", function (event) {
+				if (event.pointerId === activePointerId) {
+					isPainting = false;
+					activePointerId = null;
+					ledList.style.touchAction = "pan-y";
+					if (ledList.releasePointerCapture) {
+						try {
+							ledList.releasePointerCapture(event.pointerId);
+						} catch (e) {
+							/* no-op */
+						}
+					}
+				}
+			});
+
+			window.addEventListener("pointercancel", function (event) {
+				if (event.pointerId === activePointerId) {
+					isPainting = false;
+					activePointerId = null;
+					ledList.style.touchAction = "pan-y";
+					if (ledList.releasePointerCapture) {
+						try {
+							ledList.releasePointerCapture(event.pointerId);
+						} catch (e) {
+							/* no-op */
+						}
+					}
+				}
+			});
+
+			sendBtn.addEventListener("click", sendColors);
+
+			applyCount();
+		})();
+	</script>
+</body>
+</html>
