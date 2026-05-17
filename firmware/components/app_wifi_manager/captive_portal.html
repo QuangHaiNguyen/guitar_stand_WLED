@@ -19,11 +19,16 @@
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            width: min(92vw, 380px);
         }
 
         form {
             display: flex;
             flex-direction: column;
+        }
+
+        .action-form {
+            margin: 0;
         }
 
         label {
@@ -35,7 +40,38 @@
             margin-top: 5px;
         }
 
-        button {
+        .password-row {
+            display: flex;
+            align-items: center;
+            margin-top: 5px;
+        }
+
+        .password-row input {
+            flex: 1;
+            min-width: 0;
+            margin-top: 0;
+            border-radius: 4px 0 0 4px;
+            border-right: none;
+        }
+
+        .password-toggle {
+            margin-top: 0;
+            padding: 8px 10px;
+            min-height: 35px;
+            border: 1px solid #d0d0d0;
+            border-radius: 0 4px 4px 0;
+            background: #f2f7ff;
+            color: #0056b3;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .password-toggle:hover {
+            background: #e2efff;
+        }
+
+        button[type="submit"] {
             margin-top: 15px;
             padding: 10px;
             background: #007BFF;
@@ -44,8 +80,33 @@
             cursor: pointer;
         }
 
-        button:hover {
+        .secondary-action {
+            width: 100%;
+            margin-top: 10px;
+            padding: 10px;
+            background: #0f766e;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button[type="submit"]:hover {
             background: #0056b3;
+        }
+
+        .secondary-action:hover {
+            background: #0b5c56;
+        }
+
+        @media (max-width: 380px) {
+            .container {
+                padding: 16px;
+            }
+
+            .password-toggle {
+                font-size: 12px;
+                padding: 8px 9px;
+            }
         }
     </style>
 </head>
@@ -57,10 +118,32 @@
             <input type="text" id="ssid" name="ssid" required>
 
             <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
+            <div class="password-row">
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+                <button type="button" class="password-toggle" id="passwordToggle" aria-label="Show password">Show</button>
+            </div>
+
+            <label for="hostname">Hostname:</label>
+            <input type="text" id="hostname" name="hostname" required>
 
             <button type="submit">Submit</button>
         </form>
+
+        <form class="action-form" action="/led" method="GET">
+            <button type="submit" class="secondary-action">LED control</button>
+        </form>
     </div>
+
+    <script>
+        const passwordInput = document.getElementById("password");
+        const passwordToggle = document.getElementById("passwordToggle");
+
+        passwordToggle.addEventListener("click", function () {
+            const isHidden = passwordInput.type === "password";
+            passwordInput.type = isHidden ? "text" : "password";
+            passwordToggle.textContent = isHidden ? "Hide" : "Show";
+            passwordToggle.setAttribute("aria-label", isHidden ? "Hide password" : "Show password");
+        });
+    </script>
 </body>
 </html>
