@@ -10,6 +10,7 @@
 #include "lwip/inet.h"
 #include "lwip/ip_addr.h"
 #include "lwip/sockets.h"
+#include "app_storage.h"
 
 #include "esp_http_server.h"
 
@@ -23,17 +24,18 @@
 #include "app_event_bus.h"
 
 
-#define WIFI_PARTITION_NAME     "wifi_manager_part"
 #define EXAMPLE_ESP_WIFI_SSID   "rgb_guitar_stand"
 #define EXAMPLE_ESP_WIFI_PASS   "ionian_dorian_1234"
 #define EXAMPLE_MAX_STA_CONN    2
-#define WIFI_NVS_NAMESPACE      "wifi_creds"
 #define TASK_PRIORITY           10
 #define TASK_SIZE               4096
 #define MAX_CONNECT_RETRY       10
-#define DEVICE_HOSTNAME         "guitar-stand"
+#define DEFAULT_HOSTNAME        "guitar-stand"
 #define DNS_PORT                53
 #define DNS_PACKET_MAX_SIZE     512
+#define COLOR_PICKER_MAX_LEDS     50
+#define COLOR_PICKER_MAX_BODY_LEN (COLOR_PICKER_MAX_LEDS * 3)
+#define HTTP_SERVER_MAX_URI_HANDLERS 12
 
 #define SM_EVENT_WIFI_CREDENTIALS_RECEIVED  0x01
 #define SM_EVENT_START_CAPTIVE_PORTAL       0x02
@@ -52,15 +54,19 @@ typedef struct{
     httpd_config_t http_server_conf;
     uint32_t reconnect_count;
     uint32_t count_100ms;
-    nvs_handle_t nvs;
     wifi_config_t wifi_ap_config;
     wifi_config_t wifi_sta_config;
     esp_netif_t *netif;
     SM_ERR_CODE error_code;
+    bool app_storage_initialized;
+    bool ap_mode;
+    char hostname[32];
 }WifiManagerContext_t;
 
 extern const char captive_portal_start[] asm("_binary_captive_portal_html_start");
 extern const char captive_portal_end[] asm("_binary_captive_portal_html_end");
+extern const char color_picker_start[] asm("_binary_color_picker_html_start");
+extern const char color_picker_end[] asm("_binary_color_picker_html_end");
 
 static ezEventListener_t button_event_observer;
 static uint8_t sm_event_buff[32];
@@ -77,7 +83,10 @@ static esp_err_t wifiManager_InitNetStack(void);
 static esp_err_t wifiManager_ConfigureApDns(void);
 static esp_err_t wifiManager_StartMdns(void);
 static void wifiManager_StopMdns(void);
+
 static httpd_handle_t start_webserver(httpd_handle_t* handle);
+static esp_err_t stop_webserver(httpd_handle_t *handle);
+
 static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err);
 static esp_err_t captive_portal_probe_handler(httpd_req_t *req);
 static esp_err_t handle_form_submit(httpd_req_t *req);
@@ -86,6 +95,10 @@ static int wifiManager_ButtonEventCallback(uint32_t event_code, const void *data
 static void wifiManager_Task(void* arg);
 static void http_string_decode(char* str, size_t len);
 static bool wifiManager_LoadCredentialsFromNVS(WifiManagerContext_t *ctx);
+
+static esp_err_t wifiManager_GetPageHandler(httpd_req_t *req);
+static esp_err_t wifiManager_PostColorsHandler(httpd_req_t *req);
+static bool wifiManager_ReadBody(httpd_req_t *req, uint8_t *buffer, int buffer_len);
 
 static void wifi_event_handler(
     void *arg,
@@ -141,6 +154,24 @@ static const httpd_uri_t http_windows_fwlink = {
     .handler = captive_portal_probe_handler
 };
 
+static const httpd_uri_t http_get_color_picker = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = wifiManager_GetPageHandler
+};
+
+static const httpd_uri_t http_get_led_control = {
+    .uri = "/led",
+    .method = HTTP_GET,
+    .handler = wifiManager_GetPageHandler
+};
+
+static const httpd_uri_t http_post_led_colors = {
+    .uri = "/api/led/colors",
+    .method = HTTP_POST,
+    .handler = wifiManager_PostColorsHandler
+};
+
 static ezStateMachine_t wifi_manager_sm;
 INIT_STATE(StateInit, NULL);
 INIT_STATE(StateAP, NULL);
@@ -159,6 +190,11 @@ bool wifi_manager_Init(void) {
 
     //Initialize NVS partition for WiFi manager
     ESP_ERROR_CHECK(nvs_flash_init());
+    context.app_storage_initialized = appStorage_Init();
+    if(context.app_storage_initialized == false)
+    {
+        EZERROR("Failed to initialize storage");
+    }
 
     xTaskCreate(wifiManager_Task,
         "wifi_manager_task",
@@ -263,7 +299,15 @@ static esp_err_t wifiManager_StartMdns(void)
         return err;
     }
 
-    err = mdns_hostname_set(DEVICE_HOSTNAME);
+    size_t hostname_len = sizeof(context.hostname);
+    if(appStorage_GetData(STORAGE_TYPE_HOST_NAME, (uint8_t*)context.hostname, &hostname_len, 0) == false || hostname_len == 0)
+    {
+        strncpy(context.hostname, DEFAULT_HOSTNAME, sizeof(context.hostname));
+        EZINFO("No hostname found in storage, using default: %s", context.hostname);
+    }
+    
+
+    err = mdns_hostname_set(context.hostname);
     if(err != ESP_OK)
     {
         EZERROR("mDNS hostname set failed: %s", esp_err_to_name(err));
@@ -280,7 +324,7 @@ static esp_err_t wifiManager_StartMdns(void)
     }
 
     mdns_started = true;
-    EZINFO("mDNS started: %s.local", DEVICE_HOSTNAME);
+    EZINFO("mDNS started: %s.local", context.hostname);
     return ESP_OK;
 }
 
@@ -460,24 +504,84 @@ static httpd_handle_t start_webserver(httpd_handle_t* handle)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_open_sockets = 7;
+    config.max_uri_handlers = HTTP_SERVER_MAX_URI_HANDLERS;
     config.lru_purge_enable = true;
 
     // Start the httpd server
     EZDEBUG("Starting server on port: '%d'", config.server_port);
     if (httpd_start(handle, &config) == ESP_OK) {
+        esp_err_t err = ESP_OK;
+
         // Set URI handlers
         EZDEBUG("Registering URI handlers");
-        httpd_register_uri_handler(*handle, &http_form_post);
-        httpd_register_uri_handler(*handle, &http_get_root);
-        httpd_register_uri_handler(*handle, &http_android_generate_204);
-        httpd_register_uri_handler(*handle, &http_android_gen_204);
-        httpd_register_uri_handler(*handle, &http_apple_hotspot_detect);
-        httpd_register_uri_handler(*handle, &http_windows_connecttest);
-        httpd_register_uri_handler(*handle, &http_windows_ncsi);
-        httpd_register_uri_handler(*handle, &http_windows_fwlink);
-        httpd_register_err_handler(*handle, HTTPD_404_NOT_FOUND, http_404_error_handler);
+        if(context.ap_mode)
+        {
+            err = httpd_register_uri_handler(*handle, &http_form_post);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_root);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_led_control);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_android_generate_204);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_android_gen_204);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_apple_hotspot_detect);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_windows_connecttest);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_windows_ncsi);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_windows_fwlink);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_post_led_colors);
+            if(err != ESP_OK) { goto register_failed; }
+        }
+        else
+        {
+            err = httpd_register_uri_handler(*handle, &http_get_color_picker);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_led_control);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_post_led_colors);
+            if(err != ESP_OK) { goto register_failed; }
+        }
+        
+        err = httpd_register_err_handler(*handle, HTTPD_404_NOT_FOUND, http_404_error_handler);
+        if(err != ESP_OK) { goto register_failed; }
+
+        return *handle;
+
+register_failed:
+        EZERROR("Failed to register URI/err handler: %s", esp_err_to_name(err));
+        stop_webserver(handle);
+        return NULL;
     }
+    else
+    {
+        EZERROR("Failed to start HTTP server");
+        stop_webserver(handle);
+        return NULL;
+    }
+
     return *handle;
+}
+
+static esp_err_t stop_webserver(httpd_handle_t *handle)
+{
+    if ((handle == NULL) || (*handle == NULL)) {
+        return ESP_OK;
+    }
+
+    httpd_handle_t server = *handle;
+    *handle = NULL;  // prevent other code from using stale handle
+
+    esp_err_t err = httpd_stop(server);
+    if (err != ESP_OK) {
+        EZERROR("httpd_stop failed: %s", esp_err_to_name(err));
+    }
+
+    return err;
 }
 
 
@@ -506,6 +610,7 @@ static esp_err_t captive_portal_probe_handler(httpd_req_t *req)
 
 static esp_err_t handle_form_submit(httpd_req_t *req)
 {
+    bool success = false;
     char buf[100];
     memset(buf, 0, sizeof(buf));
     int recv_len = httpd_req_recv(req, buf, sizeof(buf));
@@ -515,24 +620,39 @@ static esp_err_t handle_form_submit(httpd_req_t *req)
     // Extract SSID & Password
     char ssid[32];
     char password[64];
+    char hostname[32];
     memset(ssid, 0, sizeof(ssid));
     memset(password, 0, sizeof(password));
+    memset(hostname, 0, sizeof(hostname));
 
-    sscanf(buf, "ssid=%31[^&]&password=%63s", ssid, password);
+    sscanf(buf, "ssid=%31[^&]&password=%63[^&]&hostname=%31s", ssid, password, hostname);
     http_string_decode(password, strlen(password) + 1);
     http_string_decode(ssid, strlen(ssid) + 1);
-    EZDEBUG("Received SSID: %s, Password: %s", ssid, password);
+    http_string_decode(hostname, strlen(hostname) + 1);
+    EZDEBUG("Received SSID: %s, Password: %s, Hostname: %s", ssid, password, hostname);
 
-    // Store in NVS
-    ESP_ERROR_CHECK(nvs_open("wifi_creds", NVS_READWRITE, &context.nvs));
-    ESP_ERROR_CHECK(nvs_set_str(context.nvs, "ssid", ssid));
-    ESP_ERROR_CHECK(nvs_set_str(context.nvs, "password", password));
-    ESP_ERROR_CHECK(nvs_commit(context.nvs));
-    nvs_close(context.nvs);
+    // Store data in NVS
+    success = appStorage_SetData(STORAGE_TYPE_WIFI_SSID, (uint8_t*)ssid, strlen(ssid) + 1, 0);
+    success &= appStorage_SetData(STORAGE_TYPE_WIFI_PASSWORD, (uint8_t*)password, strlen(password) + 1, 0);
+    success &= appStorage_SetData(STORAGE_TYPE_HOST_NAME, (uint8_t*)hostname, strlen(hostname) + 1, 0);
 
-    httpd_resp_send(req, "Wi-Fi credentials saved! Connecting...", HTTPD_RESP_USE_STRLEN);
-    ezSM_SetEvent(&wifi_manager_sm, SM_EVENT_WIFI_CREDENTIALS_RECEIVED);
-    return ESP_OK;
+    /* Clean the buffer for the sake of security */
+    memset(ssid, 0, sizeof(ssid));
+    memset(password, 0, sizeof(password));
+    memset(hostname, 0, sizeof(hostname));
+    if(success == false)
+    {
+        EZERROR("Failed to save Wi-Fi credentials to storage");
+        httpd_resp_send(req, "Failed to save Wi-Fi credentials. Please try again.", HTTPD_RESP_USE_STRLEN);
+        /* State machine should do something else to handle the error */
+        return ESP_OK;
+    }
+    else
+    {
+        httpd_resp_send(req, "Wi-Fi credentials saved! Connecting...", HTTPD_RESP_USE_STRLEN);
+        ezSM_SetEvent(&wifi_manager_sm, SM_EVENT_WIFI_CREDENTIALS_RECEIVED);
+        return ESP_OK;
+    }
 }
 
 
@@ -546,6 +666,86 @@ static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     httpd_resp_send(req, "Redirect to the captive portal", HTTPD_RESP_USE_STRLEN);
 
     EZDEBUG("Redirecting to root");
+    return ESP_OK;
+}
+
+
+static esp_err_t wifiManager_GetPageHandler(httpd_req_t *req)
+{
+    const size_t page_len = (size_t)(color_picker_end - color_picker_start);
+
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_send(req, color_picker_start, page_len);
+    return ESP_OK;
+}
+
+
+static bool wifiManager_ReadBody(httpd_req_t *req, uint8_t *buffer, int buffer_len)
+{
+    int recv_len = 0;
+    int total = 0;
+
+    if((req == NULL) || (buffer == NULL) || (buffer_len <= 0))
+    {
+        return false;
+    }
+
+    if(req->content_len > buffer_len)
+    {
+        return false;
+    }
+
+    while(total < req->content_len)
+    {
+        recv_len = httpd_req_recv(req, (char *)(buffer + total), req->content_len - total);
+        if(recv_len == HTTPD_SOCK_ERR_TIMEOUT)
+        {
+            continue;
+        }
+        if(recv_len <= 0)
+        {
+            return false;
+        }
+        total += recv_len;
+    }
+
+    return total == req->content_len;
+}
+
+
+static esp_err_t wifiManager_PostColorsHandler(httpd_req_t *req)
+{
+    uint8_t payload[COLOR_PICKER_MAX_BODY_LEN] = {0};
+    int32_t led_count = 0;
+
+    if((req->content_len <= 0) || (req->content_len > COLOR_PICKER_MAX_BODY_LEN))
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid content length");
+        return ESP_FAIL;
+    }
+
+    if((req->content_len % 3) != 0)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Payload must be RGB byte stream");
+        return ESP_FAIL;
+    }
+
+    if(!wifiManager_ReadBody(req, payload, sizeof(payload)))
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to read body");
+        return ESP_FAIL;
+    }
+
+    led_count = req->content_len / 3;
+
+    // TODO: Apply payload bytes to WS2812 driver/task: payload = RGBRGB... (3 bytes per LED).
+    EZINFO("Received color byte stream for %ld LEDs", (long)led_count);
+    EZHEXDUMP(payload, req->content_len);
+
+    appEventBus_Notify(APP_EVENT_WS2812_COLOR_UPDATE, (void*)payload, req->content_len);
+
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
 
@@ -589,7 +789,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         }
         else
         {
-            EZINFO("Hostname reachable as: %s.local", DEVICE_HOSTNAME);
+            EZINFO("Hostname reachable as: %s.local", context.hostname);
         }
     }
     else
@@ -638,6 +838,7 @@ static void wifiManager_Task(void* arg)
 
 static bool wifiManager_LoadCredentialsFromNVS(WifiManagerContext_t *ctx)
 {
+    bool success = false;
     EZTRACE("wifiManager_LoadCredentialsFromNVS()");
     if(ctx == NULL)
     {
@@ -645,49 +846,32 @@ static bool wifiManager_LoadCredentialsFromNVS(WifiManagerContext_t *ctx)
         return false;
     }
 
-    uint8_t ssid[32];
-    uint8_t password[64];
+    uint8_t ssid[32] = {0};
+    uint8_t password[64] = {0};
     size_t ssid_len = sizeof(ssid);
     size_t password_len = sizeof(password);
+
+    success = appStorage_GetData(STORAGE_TYPE_WIFI_SSID, ssid, &ssid_len, 0);
+    success &= appStorage_GetData(STORAGE_TYPE_WIFI_PASSWORD, password, &password_len, 0);
+    if(success == false)
+    {
+        EZERROR("Failed to read Wi-Fi credentials from storage");
+    }
+    else
+    {
+        memcpy(ctx->wifi_sta_config.sta.ssid, ssid, 32);
+        memcpy(ctx->wifi_sta_config.sta.password, password, 64);
+
+        EZDEBUG("ssid: %s", ctx->wifi_sta_config.sta.ssid);
+        EZDEBUG("ssid_len: %d", ssid_len);
+        EZDEBUG("password: %s", ctx->wifi_sta_config.sta.password);
+        EZDEBUG("password_len: %d", password_len);
+    }
 
     memset(ssid, 0, sizeof(ssid));
     memset(password, 0, sizeof(password));
 
-    if(nvs_open(WIFI_NVS_NAMESPACE, NVS_READONLY, &ctx->nvs) != ESP_OK)
-    {
-        EZERROR("Failed to open NVS namespace");
-        return false;
-    }
-
-    if(nvs_get_str(ctx->nvs, "ssid", (char*)ssid, &ssid_len) != ESP_OK)
-    {
-        EZERROR("Failed to get SSID from nvs");
-        nvs_close(ctx->nvs);
-        return false;
-    }
-
-    if(nvs_get_str(ctx->nvs, "password", (char*)password, &password_len) != ESP_OK)
-    {
-        EZERROR("Failed to get password from nvs");
-        nvs_close(ctx->nvs);
-        return false;
-    }
-
-    nvs_close(ctx->nvs);
-    if(ssid_len == 0 || password_len == 0)
-    {
-        EZERROR("SSID or password is empty");
-        return false;
-    }
-
-    memcpy(ctx->wifi_sta_config.sta.ssid, ssid, 32);
-    memcpy(ctx->wifi_sta_config.sta.password, password, 64);
-
-    EZDEBUG("ssid: %s", ctx->wifi_sta_config.sta.ssid);
-    EZDEBUG("ssid_len: %d", ssid_len);
-    EZDEBUG("password: %s", ctx->wifi_sta_config.sta.password);
-    EZDEBUG("password_len: %d", password_len);
-    return true;
+    return success;
 }
 
 static void http_string_decode(char* str, size_t len)
@@ -814,6 +998,7 @@ DEFINE_ENTRY_FUNCTION(StateAP)
     dhcp_set_captiveportal_url();
     dns_redirect_start();
 
+    ctx->ap_mode = true;
     ctx->http_server_h = start_webserver(&ctx->http_server_h);
     return NULL;
 }
@@ -831,11 +1016,7 @@ DEFINE_EXIT_FUNCTION(StateAP)
     dns_redirect_stop();
 
     /* Stop the server */
-    if(ctx->http_server_h != NULL)
-    {
-        httpd_stop(ctx->http_server_h);
-        ctx->http_server_h = NULL;
-    }
+    stop_webserver(&ctx->http_server_h);
 
     /* stop dhcp server */
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
@@ -896,7 +1077,9 @@ DEFINE_ENTRY_FUNCTION(StateSTA)
         EZERROR("Failed to create default wifi STA");
         return &StateError;
     }
-    if(esp_netif_set_hostname(ctx->netif, DEVICE_HOSTNAME) != ESP_OK)
+
+
+    if(esp_netif_set_hostname(ctx->netif, ctx->hostname) != ESP_OK)
     {
         EZERROR("Failed to set STA hostname");
         return &StateError;
@@ -938,6 +1121,9 @@ DEFINE_ENTRY_FUNCTION(StateSTA)
         return &StateError;
     }
 
+    ctx->ap_mode = false;
+    start_webserver(&ctx->http_server_h);
+
     return NULL;
 }
 
@@ -952,6 +1138,7 @@ DEFINE_EXIT_FUNCTION(StateSTA)
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler));
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler));
     wifiManager_StopMdns();
+    stop_webserver(&ctx->http_server_h);
     esp_wifi_stop();
     esp_wifi_deinit();
     if(ctx->netif != NULL)

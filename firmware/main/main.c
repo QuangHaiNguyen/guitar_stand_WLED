@@ -8,20 +8,19 @@
 #include "app_tof.h"
 #include "app_common.h"
 #include "app_event_bus.h"
-#include "app_color_picker.h"
 #include "ws2812.h"
-
+#include "app_storage.h"
 
 void app_main(void)
 {
+    if(appStorage_Init() == false)
+    {
+        EZERROR("Failed to initialize storage");
+    }
+
     if(appEventBus_Init() == false)
     {
         EZERROR("Failed to initialize event bus");
-    }
-
-    if (appColorPicker_Init() == false)
-    {
-        EZERROR("Failed to initialize color picker");
     }
     
     if(appGpio_Init() == false)
@@ -44,4 +43,3 @@ void app_main(void)
         EZERROR("Failed to initialize TOF sensor");
     }
 }
-

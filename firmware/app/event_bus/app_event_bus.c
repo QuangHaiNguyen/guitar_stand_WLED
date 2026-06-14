@@ -45,7 +45,7 @@ void appEventBus_Notify(uint32_t event_code, void *event_data, size_t event_data
     EZDEBUG("Notify event code %d, data size %d", event_code, event_data_size);
     if(ezEventBus_SendEvent(&app_event_bus, event_code, event_data, event_data_size) == false)
     {
-        EZERROR("Failed to send event");
+        EZERROR("Failed to send event=%d", event_code);
     }
 }
 
