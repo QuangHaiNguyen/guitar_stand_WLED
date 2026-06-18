@@ -192,6 +192,7 @@
 	<script>
 		(function () {
 			var MAX_LEDS = 50;
+			var STATE_URL = "/api/led/state";
 			var SEND_URL = "/api/led/colors";
 
 			var ledCountInput = document.getElementById("ledCount");
@@ -295,6 +296,40 @@
 				setStatus("Prepared " + count + " LEDs", false);
 			}
 
+			async function loadLedState() {
+				setStatus("Loading LED state...", false);
+
+				try {
+					var response = await fetch(STATE_URL, { cache: "no-store" });
+					var data;
+					var colors;
+					var count;
+					var nextColors;
+					var i;
+
+					if (!response.ok) {
+						throw new Error("HTTP " + response.status);
+					}
+
+					data = await response.json();
+					count = clampCount(Number(data && data.ledCount));
+					colors = data && Array.isArray(data.colors) ? data.colors : [];
+					nextColors = buildColors(count);
+
+					for (i = 0; i < count && i < colors.length; i++) {
+						nextColors[i] = hexToRgb(String(colors[i] || "#000000"));
+					}
+
+					ledCountInput.value = String(count);
+					ledColors = nextColors;
+					renderLedList();
+					setStatus("Loaded " + count + " LEDs", false);
+				} catch (error) {
+					applyCount();
+					setStatus("Load failed: " + error.message, true);
+				}
+			}
+
 			function getCellFromPointer(event) {
 				var element = document.elementFromPoint(event.clientX, event.clientY);
 				if (!element) return null;
@@ -392,7 +427,7 @@
 
 			sendBtn.addEventListener("click", sendColors);
 
-			applyCount();
+			loadLedState();
 		})();
 	</script>
 </body>
