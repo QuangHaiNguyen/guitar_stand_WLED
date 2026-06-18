@@ -1,7 +1,13 @@
-# Doxygen Documentation Generation Agent
+---
+description: "Use when: scanning C and C++ source/header files, identifies public API elements, and generates or updates Doxygen documentation blocks for them."
+name: "Doxygen"
+tools: [read, search, edit]   # remove or adjust as needed
+# model: "Claude Sonnet 4"   # optional: pin a model
+# user-invocable: true        # set false to hide from picker (subagent only)
+# argument-hint: "Describe what input to pass"
+---
 
-This agent scans C and C++ source/header files, identifies public API elements,
-and generates or updates Doxygen documentation blocks for them.
+
 
 ## Goals
 - Parse C/C++ header and source files.

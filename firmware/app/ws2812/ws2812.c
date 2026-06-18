@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "app_event_bus.h"
+#include "app_storage.h"
 #include "app_common.h"
 #include "led_strip.h"
 
@@ -34,7 +35,8 @@
 *****************************************************************************/
 static ezEventListener_t event_listener;
 static led_strip_handle_t led_strip_handle;
-
+static size_t num_leds = 0;
+static uint8_t led_color_data[WS2812_STRIP_LED_COUNT * 3] = {0};
 
 static int ws2812_OnReceiveEventCallback(uint32_t event_code, const void *data, size_t data_size);
 static bool ws2812_ConfigureStrip(void);
@@ -64,9 +66,30 @@ bool ws2812_Init(void)
         return false;
     }
 
+    size_t len = sizeof(num_leds);
+    if(!appStorage_GetData(STORAGE_TYPE_NUM_OF_LEDS, (uint8_t *)&num_leds, &len, 0))
+    {
+        num_leds = WS2812_STRIP_LED_COUNT;
+    }
+
+    len = sizeof(led_color_data);
+    if(!appStorage_GetData(STORAGE_TYPE_LED_COLORS, led_color_data, &len, 0))
+    {
+        memset(led_color_data, 0x00, sizeof(led_color_data));
+    }
     return true;
 }
 
+uint8_t *ws2812_GetLedColor(size_t *len)
+{
+    if(len == NULL)
+    {
+        return NULL;
+    }
+
+    *len = num_leds*3;
+    return led_color_data;
+}
 
 static bool ws2812_ConfigureStrip(void)
 {
@@ -152,6 +175,20 @@ static bool ws2812_ApplyColors(const uint8_t *color_data, size_t color_data_size
     }
 
     EZDEBUG("Applied colors to %d LEDs", (int)led_count);
+
+    num_leds = led_count;
+    memcpy(led_color_data, color_data, color_data_size);
+
+    if(appStorage_SetData(STORAGE_TYPE_LED_COLORS, color_data, color_data_size, 0) == false)
+    {
+        EZERROR("Failed to save LED colors to storage");
+    }
+
+    if(appStorage_SetData(STORAGE_TYPE_NUM_OF_LEDS, (const uint8_t*)&led_count, sizeof(led_count), 0) == false)
+    {
+        EZERROR("Failed to save number of LEDs to storage");
+    }
+
     return true;
 }
 

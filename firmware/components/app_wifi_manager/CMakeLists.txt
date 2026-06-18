@@ -8,4 +8,5 @@ target_link_libraries(${COMPONENT_LIB} PRIVATE
     easy_embedded_lib
     app_event_bus_lib
     app_storage_lib
+    ws2812_lib
 )

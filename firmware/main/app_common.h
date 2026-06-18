@@ -8,7 +8,7 @@
 #define SERVICE_BUTTON      9
 
 #define WS2812_STRIP_GPIO       10
-#define WS2812_STRIP_LED_COUNT  8
+#define WS2812_STRIP_LED_COUNT  50
 #define WS2812_RMT_RES_HZ  (10 * 1000 * 1000)
 
 #define GPIO_DRIVER_NAME    "ESP32_GPIO"

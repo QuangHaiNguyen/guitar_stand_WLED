@@ -10,6 +10,7 @@ target_include_directories(ws2812_lib PUBLIC
 target_link_libraries(ws2812_lib PRIVATE
     easy_embedded_lib
     app_event_bus_lib
+    app_storage_lib
     idf::espressif__led_strip
 )
 

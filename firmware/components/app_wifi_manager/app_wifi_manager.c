@@ -1,4 +1,6 @@
 #include "app_wifi_manager.h"
+#include <stdio.h>
+#include <string.h>
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -11,6 +13,8 @@
 #include "lwip/ip_addr.h"
 #include "lwip/sockets.h"
 #include "app_storage.h"
+#include "app_common.h"
+#include "ws2812.h"
 
 #include "esp_http_server.h"
 
@@ -33,8 +37,9 @@
 #define DEFAULT_HOSTNAME        "guitar-stand"
 #define DNS_PORT                53
 #define DNS_PACKET_MAX_SIZE     512
-#define COLOR_PICKER_MAX_LEDS     50
+#define COLOR_PICKER_MAX_LEDS     WS2812_STRIP_LED_COUNT
 #define COLOR_PICKER_MAX_BODY_LEN (COLOR_PICKER_MAX_LEDS * 3)
+#define COLOR_PICKER_STATE_JSON_MAX_LEN ((COLOR_PICKER_MAX_LEDS * 12) + 64)
 #define HTTP_SERVER_MAX_URI_HANDLERS 12
 
 #define SM_EVENT_WIFI_CREDENTIALS_RECEIVED  0x01
@@ -97,6 +102,7 @@ static void http_string_decode(char* str, size_t len);
 static bool wifiManager_LoadCredentialsFromNVS(WifiManagerContext_t *ctx);
 
 static esp_err_t wifiManager_GetPageHandler(httpd_req_t *req);
+static esp_err_t wifiManager_GetLedStateHandler(httpd_req_t *req);
 static esp_err_t wifiManager_PostColorsHandler(httpd_req_t *req);
 static bool wifiManager_ReadBody(httpd_req_t *req, uint8_t *buffer, int buffer_len);
 
@@ -172,6 +178,12 @@ static const httpd_uri_t http_post_led_colors = {
     .handler = wifiManager_PostColorsHandler
 };
 
+static const httpd_uri_t http_get_led_state = {
+    .uri = "/api/led/state",
+    .method = HTTP_GET,
+    .handler = wifiManager_GetLedStateHandler
+};
+
 static ezStateMachine_t wifi_manager_sm;
 INIT_STATE(StateInit, NULL);
 INIT_STATE(StateAP, NULL);
@@ -205,6 +217,10 @@ bool wifi_manager_Init(void) {
 
 static void dhcp_set_captiveportal_url(void)
 {
+    // Static buffer: no heap alloc/free cycle, pointer stays valid for the lifetime
+    // of the DHCP server (which may store it by reference in some IDF versions).
+    static char captiveportal_uri[32];
+
     // get the IP of the access point to redirect to
     esp_netif_ip_info_t ip_info;
     esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"), &ip_info);
@@ -213,21 +229,17 @@ static void dhcp_set_captiveportal_url(void)
     inet_ntoa_r(ip_info.ip.addr, ip_addr, 16);
     EZDEBUG("Set up softAP with IP: %s", ip_addr);
 
-    // turn the IP into a URI
-    char* captiveportal_uri = (char*) malloc(32 * sizeof(char));
-    assert(captiveportal_uri && "Failed to allocate captiveportal_uri");
-    strcpy(captiveportal_uri, "http://");
-    strcat(captiveportal_uri, ip_addr);
+    // Build URI safely; snprintf guarantees null termination.
+    snprintf(captiveportal_uri, sizeof(captiveportal_uri), "http://%s", ip_addr);
 
     // get a handle to configure DHCP with
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
 
-    // set the DHCP option 114
+    // set the DHCP option 114; pass strlen+1 so the null terminator is included,
+    // preventing a 1-byte heap overflow in IDF's internal copy.
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(netif));
-    ESP_ERROR_CHECK(esp_netif_dhcps_option(netif, ESP_NETIF_OP_SET, ESP_NETIF_CAPTIVEPORTAL_URI, captiveportal_uri, strlen(captiveportal_uri)));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_option(netif, ESP_NETIF_OP_SET, ESP_NETIF_CAPTIVEPORTAL_URI, captiveportal_uri, strlen(captiveportal_uri) + 1U));
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(netif));
-
-    free(captiveportal_uri);
 }
 
 
@@ -534,6 +546,8 @@ static httpd_handle_t start_webserver(httpd_handle_t* handle)
             if(err != ESP_OK) { goto register_failed; }
             err = httpd_register_uri_handler(*handle, &http_windows_fwlink);
             if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_led_state);
+            if(err != ESP_OK) { goto register_failed; }
             err = httpd_register_uri_handler(*handle, &http_post_led_colors);
             if(err != ESP_OK) { goto register_failed; }
         }
@@ -542,6 +556,8 @@ static httpd_handle_t start_webserver(httpd_handle_t* handle)
             err = httpd_register_uri_handler(*handle, &http_get_color_picker);
             if(err != ESP_OK) { goto register_failed; }
             err = httpd_register_uri_handler(*handle, &http_get_led_control);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_led_state);
             if(err != ESP_OK) { goto register_failed; }
             err = httpd_register_uri_handler(*handle, &http_post_led_colors);
             if(err != ESP_OK) { goto register_failed; }
@@ -676,6 +692,74 @@ static esp_err_t wifiManager_GetPageHandler(httpd_req_t *req)
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_send(req, color_picker_start, page_len);
+    return ESP_OK;
+}
+
+
+static esp_err_t wifiManager_GetLedStateHandler(httpd_req_t *req)
+{
+    uint8_t *color_data = NULL;
+    size_t len = 0;
+    char response[COLOR_PICKER_STATE_JSON_MAX_LEN] = {0};
+    int written = 0;
+    size_t led_count = 0;
+
+    color_data = ws2812_GetLedColor(&len);
+
+    if(color_data == NULL)
+    {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to build LED state");
+    }
+    led_count = len/3;
+
+    written = snprintf(response, sizeof(response), "{\"ledCount\":%lu,\"colors\":[", (unsigned long)led_count);
+    if((written < 0) || ((size_t)written >= sizeof(response)))
+    {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to build LED state");
+    }
+
+    for(size_t led_index = 0; led_index < led_count; led_index++)
+    {
+        size_t offset = led_index * 3U;
+        uint8_t red = 0;
+        uint8_t green = 0;
+        uint8_t blue = 0;
+        int appended = 0;
+
+        if((offset + 2U) < len)
+        {
+            red = color_data[offset];
+            green = color_data[offset + 1U];
+            blue = color_data[offset + 2U];
+        }
+
+        appended = snprintf(response + written,
+            sizeof(response) - (size_t)written,
+            "%s\"#%02x%02x%02x\"",
+            (led_index == 0U) ? "" : ",",
+            red,
+            green,
+            blue);
+
+        if((appended < 0) || ((size_t)appended >= (sizeof(response) - (size_t)written)))
+        {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to build LED state");
+        }
+
+        written += appended;
+    }
+
+    if(((size_t)written + 2U) >= sizeof(response))
+    {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to build LED state");
+    }
+
+    response[written++] = ']';
+    response[written++] = '}';
+    response[written] = '\0';
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
