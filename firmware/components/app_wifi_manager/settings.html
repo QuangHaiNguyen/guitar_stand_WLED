@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Settings</title>
+	<style>
+		:root {
+			--bg: #f7f8fb;
+			--panel: #ffffff;
+			--text: #20242b;
+			--muted: #5d6675;
+			--line: #d9deea;
+			--accent: #0f766e;
+			--danger: #b42318;
+			--success: #166534;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			font-family: "Segoe UI", Tahoma, sans-serif;
+			color: var(--text);
+			background: linear-gradient(180deg, #f1f6fb 0%, #f8f7f2 100%);
+			padding:
+				calc(10px + env(safe-area-inset-top))
+				calc(10px + env(safe-area-inset-right))
+				calc(14px + env(safe-area-inset-bottom))
+				calc(10px + env(safe-area-inset-left));
+		}
+
+		.app {
+			max-width: 520px;
+			margin: 0 auto;
+			background: var(--panel);
+			border: 1px solid var(--line);
+			border-radius: 10px;
+			padding: 12px;
+		}
+
+		h1 {
+			font-size: 18px;
+			margin: 0 0 16px;
+		}
+
+		.section {
+			border: 1px solid var(--line);
+			border-radius: 8px;
+			padding: 14px;
+			margin-bottom: 12px;
+		}
+
+		.section-title {
+			font-size: 14px;
+			font-weight: 600;
+			color: var(--muted);
+			margin: 0 0 12px;
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+		}
+
+		button {
+			border: 1px solid var(--line);
+			border-radius: 7px;
+			padding: 10px 18px;
+			font: inherit;
+			font-size: 15px;
+			cursor: pointer;
+			min-height: 44px;
+			background: #fff;
+			color: var(--text);
+		}
+
+		.btn-primary {
+			background: var(--accent);
+			color: #fff;
+			border-color: var(--accent);
+			font-weight: 600;
+			width: 100%;
+		}
+
+		.btn-primary:disabled {
+			opacity: 0.6;
+			cursor: not-allowed;
+		}
+
+		.btn-primary:not(:disabled):hover {
+			background: #0b5c56;
+			border-color: #0b5c56;
+		}
+
+		.status {
+			min-height: 20px;
+			margin-top: 10px;
+			font-size: 14px;
+			color: var(--muted);
+		}
+
+		.status.success {
+			color: var(--success);
+			font-weight: 600;
+		}
+
+		.status.error {
+			color: var(--danger);
+			font-weight: 600;
+		}
+
+		.status.info {
+			color: var(--accent);
+		}
+
+		@media (max-width: 480px) {
+			.app {
+				padding: 10px;
+				border-radius: 8px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="app">
+		<h1>Settings</h1>
+
+		<div class="section">
+			<p class="section-title">Calibration</p>
+			<button id="calibrateBtn" class="btn-primary" type="button">Calibrate</button>
+			<p id="calibrateStatus" class="status" aria-live="polite"></p>
+		</div>
+	</main>
+
+	<script>
+		(function () {
+			var CALIBRATE_START_URL = "/api/calibrate/start";
+			var CALIBRATE_STATUS_URL = "/api/calibrate/status";
+			var POLL_INTERVAL_MS = 1000;
+			var TIMEOUT_MS = 10000;
+
+			var calibrateBtn = document.getElementById("calibrateBtn");
+			var calibrateStatus = document.getElementById("calibrateStatus");
+
+			var pollTimer = null;
+			var timeoutTimer = null;
+
+			function setStatus(message, type) {
+				calibrateStatus.textContent = message;
+				calibrateStatus.className = "status" + (type ? " " + type : "");
+			}
+
+			function stopPolling() {
+				if (pollTimer !== null) {
+					clearInterval(pollTimer);
+					pollTimer = null;
+				}
+				if (timeoutTimer !== null) {
+					clearTimeout(timeoutTimer);
+					timeoutTimer = null;
+				}
+				calibrateBtn.disabled = false;
+			}
+
+			async function pollStatus() {
+				try {
+					var response = await fetch(CALIBRATE_STATUS_URL, { cache: "no-store" });
+					if (!response.ok) {
+						return;
+					}
+					var data = await response.json();
+					var result = data && typeof data.result !== "undefined" ? data.result : null;
+
+					if (result === 0) {
+						stopPolling();
+						setStatus("Calibration success", "success");
+					} else if (result === -1) {
+						stopPolling();
+						setStatus("Calibration failed", "error");
+					} else if (result === 1) {
+						/* calibration still in progress — keep polling */
+					}
+				} catch (e) {
+					/* ignore transient fetch errors during polling */
+				}
+			}
+
+			async function startCalibration() {
+				calibrateBtn.disabled = true;
+				setStatus("Calibrating...", "info");
+
+				try {
+					var response = await fetch(CALIBRATE_START_URL, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ calibrate: true })
+					});
+
+					if (!response.ok) {
+						throw new Error("HTTP " + response.status);
+					}
+				} catch (e) {
+					calibrateBtn.disabled = false;
+					setStatus("Failed to start calibration: " + e.message, "error");
+					return;
+				}
+
+				pollTimer = setInterval(pollStatus, POLL_INTERVAL_MS);
+
+				timeoutTimer = setTimeout(function () {
+					stopPolling();
+					setStatus("No calibration status received", "");
+				}, TIMEOUT_MS);
+			}
+
+			calibrateBtn.addEventListener("click", startCalibration);
+		})();
+	</script>
+</body>
+</html>

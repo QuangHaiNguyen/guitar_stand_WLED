@@ -37,6 +37,8 @@ static ezEventListener_t event_listener;
 static led_strip_handle_t led_strip_handle;
 static size_t num_leds = 0;
 static uint8_t led_color_data[WS2812_STRIP_LED_COUNT * 3] = {0};
+static led_strip_config_t strip_config;
+static led_strip_rmt_config_t rmt_config;
 
 static int ws2812_OnReceiveEventCallback(uint32_t event_code, const void *data, size_t data_size);
 static bool ws2812_ConfigureStrip(void);
@@ -77,6 +79,7 @@ bool ws2812_Init(void)
     {
         memset(led_color_data, 0x00, sizeof(led_color_data));
     }
+
     return true;
 }
 
@@ -93,24 +96,38 @@ uint8_t *ws2812_GetLedColor(size_t *len)
 
 static bool ws2812_ConfigureStrip(void)
 {
-    led_strip_config_t strip_config = {
-        .strip_gpio_num = WS2812_STRIP_GPIO,
-        .max_leds = WS2812_STRIP_LED_COUNT,
-        .led_model = LED_MODEL_WS2812,
-        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
-        .flags.invert_out = false,
-    };
-    led_strip_spi_config_t spi_config = {
-        .clk_src = SPI_CLK_SRC_DEFAULT,
-        .flags.with_dma = true,
-        .spi_bus = SPI2_HOST,
-    };
-    
+    memset(&strip_config, 0, sizeof(led_strip_config_t));
+    memset(&rmt_config, 0, sizeof(led_strip_rmt_config_t));
 
-    if(led_strip_new_spi_device(&strip_config, &spi_config, &led_strip_handle) != ESP_OK)
+    strip_config.strip_gpio_num = WS2812_STRIP_GPIO;
+    strip_config.max_leds = WS2812_STRIP_LED_COUNT;
+    strip_config.led_model = LED_MODEL_SK6812;
+
+    /* Strip expects bytes in B, R, G order */
+    #if 0
+    strip_config.led_model = LED_MODEL_SK6812;
+    strip_config.color_component_format = (led_color_component_format_t){
+        .format = {.r_pos = 1, .g_pos = 2, .b_pos = 0, .w_pos = 3,
+                   .reserved = 0, .bytes_per_color = 1, .num_components = 3}};
+    #else
+    
+    strip_config.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
+    #endif
+    strip_config.flags.invert_out = false;
+
+    
+    /// RMT backend specific configuration
+    rmt_config.clk_src = RMT_CLK_SRC_DEFAULT;    // different clock source can lead to different power consumption
+    rmt_config.resolution_hz = 10 * 1000 * 1000; // RMT counter clock frequency: 10MHz
+    rmt_config.mem_block_symbols = 64;           // the memory size of each RMT channel, in words (4 bytes)
+    rmt_config.flags.with_dma = false; // DMA feature is available on chips like ESP32-S3/P4
+
+
+    if(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip_handle) != ESP_OK)
     {
         return false;
     }
+
 
     if(led_strip_clear(led_strip_handle) != ESP_OK)
     {
@@ -188,6 +205,9 @@ static bool ws2812_ApplyColors(const uint8_t *color_data, size_t color_data_size
     {
         EZERROR("Failed to save number of LEDs to storage");
     }
+
+    EZINFO("apply color completed\n");
+    EZHEXDUMP(color_data, color_data_size);
 
     return true;
 }

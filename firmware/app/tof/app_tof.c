@@ -15,7 +15,7 @@
 #include "app_tof.h"
 #include "vl53l0x_api.h"
 
-#define DEBUG_LVL   LVL_INFO   /**< logging level */
+#define DEBUG_LVL   LVL_DEBUG   /**< logging level */
 #define MOD_NAME    "app tof"    /**< module name */
 #include "ez_logging.h"
 #include "ez_i2c.h"
@@ -27,6 +27,7 @@
 #include "port_i2c.h"
 #include "vl53l0x_i2c_platform.h"
 #include "app_event_bus.h"
+#include "app_storage.h"
 
 
 #define TASK_PRIORITY                       10    /**< FreeRTOS task priority for the ToF measurement task. */
@@ -36,13 +37,25 @@
 #define THRESHOLD_MAX_COUNT                 10    /**< Number of samples averaged before an LED event is published. */
 #define TOF_SENSOR_I2C_ADDRESS              0x29  /**< Default I2C address of the VL53L0X sensor. */
 
+typedef enum
+{
+    STATE_IDLE,
+    STATE_DETECT,
+    STATE_CALIBRATE,
+}AppTofState_t;
+
+static VL53L0X_Dev_t tof_sensor;
+static ezEventListener_t event_listener;
+static AppTofState_t app_state = STATE_IDLE;
+static uint32_t dectected_distance_mm = 0;
+
 static void appTof_PrintError(VL53L0X_Error Status);
 static void appTof_Task(void* arg);
 static void appTof_PrintRangeStatus(VL53L0X_RangingMeasurementData_t* pRangingMeasurementData);
 static VL53L0X_Error appTof_Calibration(VL53L0X_Dev_t *pMyDevice);
 static VL53L0X_Error appTof_SetupDevice(VL53L0X_Dev_t *pMyDevice);
-static VL53L0X_Dev_t tof_sensor;
-
+static int appTof_EventBusCallback(uint32_t event_code, const void *data, size_t data_size);
+static void appTof_Calibrate(uint32_t delay_ms);
 
 /**
  * @brief Run a quick 10-shot ranging test and print results via the debug log.
@@ -140,17 +153,21 @@ bool appTof_Init(void)
         return false;
     }
 
-#if 1
     xTaskCreate(appTof_Task,
         "ToF_Task",
         TASK_STACK_SIZE, NULL,
         TASK_PRIORITY, NULL);
-#else
-    if(status == VL53L0X_ERROR_NONE)
+
+    if(ezEventBus_CreateListener(&event_listener, appTof_EventBusCallback) != ezSUCCESS)
     {
-        status = appTof_RangingTest(&tof_sensor);
+        EZERROR("Failed to create event observer");
+        return false;
     }
-#endif
+    else
+    {
+        appEventBus_Subscribe(&event_listener);
+    }
+
     return true;
 }
 
@@ -167,53 +184,60 @@ bool appTof_Init(void)
  */
 static void appTof_Task(void* arg)
 {
-    uint8_t count = 0;
-    uint32_t sum_distance_mm = 0;
-    VL53L0X_Error status = VL53L0X_ERROR_NONE;
-    VL53L0X_RangingMeasurementData_t measurement;
-    bool led_red_on = false;
-    bool led_blue_on = false;
+    uint32_t distance_mm = 0;
     while(1)
     {
-        status = VL53L0X_PerformSingleRangingMeasurement(&tof_sensor, &measurement);
-        if(status == VL53L0X_ERROR_NONE && measurement.RangeStatus == 0)
+        switch(app_state)
         {
-            sum_distance_mm = sum_distance_mm + measurement.RangeMilliMeter;
-            count++;
-            if(count >= 10)
-            {
-                uint32_t avg_distance_mm = sum_distance_mm/count;
-                EZDEBUG("Average distance: %i mm", avg_distance_mm);
-                sum_distance_mm = 0;
-                count = 0;
-                if(avg_distance_mm < THRESHOLD_1_MM)
-                {
-                    led_red_on = false;
-                    led_blue_on = true;
-                }
-                else if(avg_distance_mm < THRESHOLD_2_MM)
-                {
-                    led_red_on = true;
-                    led_blue_on = false;
-                }
-                else
-                {
-                    led_red_on = false;
-                    led_blue_on = false;
-                }
-                appEventBus_Notify(APP_EVENT_LED_BLUE, &led_blue_on, sizeof(led_blue_on));
-                appEventBus_Notify(APP_EVENT_LED_RED, &led_red_on, sizeof(led_red_on));
-            }
+            case STATE_IDLE:
+                /* do nothing */
+                vTaskDelay(1000/portTICK_PERIOD_MS);
+                break;
+            case STATE_DETECT:
+                vTaskDelay(1000/portTICK_PERIOD_MS);
+                break;
+            case STATE_CALIBRATE:
+                appTof_Calibrate(50);
+                break;
+            default:
+                vTaskDelay(1000/portTICK_PERIOD_MS);
+                break;
         }
-        else
-        {
-            appTof_PrintError(status);
-            appTof_PrintRangeStatus(&measurement);
-        }
-        vTaskDelay(50/portTICK_PERIOD_MS);
     }
 }
 
+
+static void appTof_Calibrate(uint32_t delay_ms)
+{
+    static uint8_t count = 0;
+    static uint32_t sum_distance_mm = 0;
+    VL53L0X_Error status = VL53L0X_ERROR_NONE;
+    VL53L0X_RangingMeasurementData_t measurement;
+
+    status = VL53L0X_PerformSingleRangingMeasurement(&tof_sensor, &measurement);
+    if(status == VL53L0X_ERROR_NONE && measurement.RangeStatus == 0)
+    {
+        EZINFO("Measurement %d: %d mm", count, measurement.RangeMilliMeter);
+        sum_distance_mm = sum_distance_mm + measurement.RangeMilliMeter;
+        count++;
+        if(count >= 10)
+        {
+            dectected_distance_mm = sum_distance_mm/count;;
+            count = 0;
+            sum_distance_mm = 0;
+            uint8_t calib_status = 0;
+            EZINFO("detected distance: %d mm", dectected_distance_mm);
+            appEventBus_Notify(APP_EVENT_TOF_CALIB_STATUS, &calib_status, sizeof(calib_status));
+            app_state = STATE_DETECT;
+        }
+    }
+    else
+    {
+        appTof_PrintError(status);
+        appTof_PrintRangeStatus(&measurement);
+    }
+    vTaskDelay(delay_ms/portTICK_PERIOD_MS);
+}
 
 /**
  * @brief Log a human-readable description of a VL53L0X error code.
@@ -359,4 +383,21 @@ static void appTof_PrintRangeStatus(VL53L0X_RangingMeasurementData_t* pRangingMe
 
     VL53L0X_GetRangeStatusString(pRangingMeasurementData->RangeStatus, buf);
     EZDEBUG("Range Status: %i : %s", pRangingMeasurementData->RangeStatus, buf);
+}
+
+
+static int appTof_EventBusCallback(uint32_t event_code, const void *data, size_t data_size)
+{
+    uint8_t status = 1;
+    switch(event_code)
+    {
+        case APP_EVENT_TOF_START_CALIB:
+            EZDEBUG("Received APP_EVENT_TOF_START_CALIB event");
+            app_state = STATE_CALIBRATE;
+            appEventBus_Notify(APP_EVENT_TOF_CALIB_STATUS, &status, sizeof(status));
+            break;
+        default:
+            break;
+    }
+    return 0;
 }

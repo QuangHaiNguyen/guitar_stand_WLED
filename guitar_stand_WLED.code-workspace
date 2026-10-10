@@ -1,0 +1,15 @@
+{
+    "folders": [
+        {
+            "name": "repo",
+            "path": "."
+        },
+        {
+            "name": "firmware (ESP-IDF)",
+            "path": "firmware"
+        }
+    ],
+    "settings": {
+        "idf.currentSetup": "/home/haing/.espressif/v6.0-beta2/esp-idf"
+    }
+}

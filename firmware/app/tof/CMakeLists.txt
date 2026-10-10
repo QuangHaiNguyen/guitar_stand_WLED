@@ -32,5 +32,6 @@ target_link_libraries(app_tof_lib PRIVATE
     vl53l0x_lib
     app_event_bus_lib
     idf::freertos
+    app_storage_lib
 )
 
