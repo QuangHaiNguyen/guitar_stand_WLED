@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "/home/haing/workspace/dev/guitar_stand_WLED/firmware"
+    "cmake.sourceDirectory": "/home/haing/workspace/dev/guitar_stand_WLED/firmware",
+    "idf.currentSetup": "/home/haing/.espressif/v6.0-beta2/esp-idf"
 }

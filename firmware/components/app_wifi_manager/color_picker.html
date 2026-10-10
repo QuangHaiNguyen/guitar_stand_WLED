@@ -145,6 +145,19 @@
 			color: var(--danger);
 		}
 
+		.btn-nav {
+			background: #fff;
+			color: var(--accent);
+			border-color: var(--accent);
+			width: 100%;
+			margin-bottom: 12px;
+			font-weight: 600;
+		}
+
+		.btn-nav:hover {
+			background: #f0faf9;
+		}
+
 		@media (max-width: 480px) {
 			.app {
 				padding: 10px;
@@ -168,6 +181,7 @@
 </head>
 <body>
 	<main class="app">
+		<button type="button" class="btn-nav" onclick="location.href='/setting'">Settings</button>
 		<h1>WS2812 LED Color Picker</h1>
 
 		<div class="controls">

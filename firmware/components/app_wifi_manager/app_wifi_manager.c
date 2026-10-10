@@ -40,7 +40,7 @@
 #define COLOR_PICKER_MAX_LEDS     WS2812_STRIP_LED_COUNT
 #define COLOR_PICKER_MAX_BODY_LEN (COLOR_PICKER_MAX_LEDS * 3)
 #define COLOR_PICKER_STATE_JSON_MAX_LEN ((COLOR_PICKER_MAX_LEDS * 12) + 64)
-#define HTTP_SERVER_MAX_URI_HANDLERS 12
+#define HTTP_SERVER_MAX_URI_HANDLERS 14
 
 #define SM_EVENT_WIFI_CREDENTIALS_RECEIVED  0x01
 #define SM_EVENT_START_CAPTIVE_PORTAL       0x02
@@ -72,6 +72,9 @@ extern const char captive_portal_start[] asm("_binary_captive_portal_html_start"
 extern const char captive_portal_end[] asm("_binary_captive_portal_html_end");
 extern const char color_picker_start[] asm("_binary_color_picker_html_start");
 extern const char color_picker_end[] asm("_binary_color_picker_html_end");
+extern const char settings_start[] asm("_binary_settings_html_start");
+extern const char settings_end[] asm("_binary_settings_html_end");
+
 
 static ezEventListener_t button_event_observer;
 static uint8_t sm_event_buff[32];
@@ -79,6 +82,7 @@ static WifiManagerContext_t context;
 static TaskHandle_t dns_redirect_task_h = NULL;
 static int dns_redirect_sock = -1;
 static bool mdns_started = false;
+static uint8_t calib_status = -1;
 
 static void dhcp_set_captiveportal_url(void);
 static void dns_redirect_start(void);
@@ -105,6 +109,9 @@ static esp_err_t wifiManager_GetPageHandler(httpd_req_t *req);
 static esp_err_t wifiManager_GetLedStateHandler(httpd_req_t *req);
 static esp_err_t wifiManager_PostColorsHandler(httpd_req_t *req);
 static bool wifiManager_ReadBody(httpd_req_t *req, uint8_t *buffer, int buffer_len);
+static esp_err_t wifiManager_GetSettingsHandler(httpd_req_t *req);
+static esp_err_t wifiManager_PostCalibrateStartHandler(httpd_req_t *req);
+static esp_err_t wifiManager_GetCalibrateStatusHandler(httpd_req_t *req);
 
 static void wifi_event_handler(
     void *arg,
@@ -172,6 +179,12 @@ static const httpd_uri_t http_get_led_control = {
     .handler = wifiManager_GetPageHandler
 };
 
+static const httpd_uri_t http_get_settings = {
+    .uri = "/setting",
+    .method = HTTP_GET,
+    .handler = wifiManager_GetSettingsHandler
+};
+
 static const httpd_uri_t http_post_led_colors = {
     .uri = "/api/led/colors",
     .method = HTTP_POST,
@@ -182,6 +195,18 @@ static const httpd_uri_t http_get_led_state = {
     .uri = "/api/led/state",
     .method = HTTP_GET,
     .handler = wifiManager_GetLedStateHandler
+};
+
+static const httpd_uri_t http_post_calibrate_start = {
+    .uri = "/api/calibrate/start",
+    .method = HTTP_POST,
+    .handler = wifiManager_PostCalibrateStartHandler
+};
+
+static const httpd_uri_t http_get_calibrate_status = {
+    .uri = "/api/calibrate/status",
+    .method = HTTP_GET,
+    .handler = wifiManager_GetCalibrateStatusHandler
 };
 
 static ezStateMachine_t wifi_manager_sm;
@@ -550,6 +575,12 @@ static httpd_handle_t start_webserver(httpd_handle_t* handle)
             if(err != ESP_OK) { goto register_failed; }
             err = httpd_register_uri_handler(*handle, &http_post_led_colors);
             if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_settings);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_post_calibrate_start);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_calibrate_status);
+            if(err != ESP_OK) { goto register_failed; }
         }
         else
         {
@@ -560,6 +591,12 @@ static httpd_handle_t start_webserver(httpd_handle_t* handle)
             err = httpd_register_uri_handler(*handle, &http_get_led_state);
             if(err != ESP_OK) { goto register_failed; }
             err = httpd_register_uri_handler(*handle, &http_post_led_colors);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_settings);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_post_calibrate_start);
+            if(err != ESP_OK) { goto register_failed; }
+            err = httpd_register_uri_handler(*handle, &http_get_calibrate_status);
             if(err != ESP_OK) { goto register_failed; }
         }
         
@@ -692,6 +729,44 @@ static esp_err_t wifiManager_GetPageHandler(httpd_req_t *req)
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_send(req, color_picker_start, page_len);
+    return ESP_OK;
+}
+
+
+static esp_err_t wifiManager_GetSettingsHandler(httpd_req_t *req)
+{
+    const size_t page_len = (size_t)(settings_end - settings_start);
+
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_send(req, settings_start, page_len);
+    return ESP_OK;
+}
+
+
+static esp_err_t wifiManager_PostCalibrateStartHandler(httpd_req_t *req)
+{
+    uint8_t dummy = 0;
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, NULL, 0);
+    EZDEBUG("Calibration start requested");
+    appEventBus_Notify(APP_EVENT_TOF_START_CALIB, &dummy, sizeof(dummy));
+
+    return ESP_OK;
+}
+
+
+static esp_err_t wifiManager_GetCalibrateStatusHandler(httpd_req_t *req)
+{
+    /* TODO: replace with real calibration status
+     *   result  1  => in progress
+     *   result  0  => success
+     *   result -1  => failed
+     */
+    char response[64] = {0};
+    sprintf(response, "{\"result\":%d}", calib_status);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
@@ -893,9 +968,15 @@ static int wifiManager_ButtonEventCallback(uint32_t event_code, const void *data
         EZDEBUG("Button long pressed");
         ezSM_SetEvent(&wifi_manager_sm, SM_EVENT_START_CAPTIVE_PORTAL);
     }
+    else if (event_code == APP_EVENT_TOF_CALIB_STATUS)
+    {
+        if((data != NULL) && (data_size == sizeof(uint8_t)))
+        {
+            calib_status = *((uint8_t*)data);
+        }
+    }
     else
     {
-        //EZDEBUG("Unknown event type");
     }
 
     return 0;
@@ -1084,6 +1165,9 @@ DEFINE_ENTRY_FUNCTION(StateAP)
 
     ctx->ap_mode = true;
     ctx->http_server_h = start_webserver(&ctx->http_server_h);
+
+    uint8_t dummy = 0;
+    appEventBus_Notify(APP_EVENT_WIFI_START_AP_MODE, &dummy, sizeof(dummy));
     return NULL;
 }
 

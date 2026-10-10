@@ -11,7 +11,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
-#define BUFF_SIZE 1024
+#define BUFF_SIZE (1*4096) 
 
 static ezEventBus_t app_event_bus;
 static uint8_t event_buff[BUFF_SIZE];
