@@ -96,6 +96,15 @@ static LedPattern_t NoBlinkLedPattern = {
     .steps = NoBlinkPattern,
 };
 
+static LedStep_t OnPattern[] = {
+    {STATE_ON, 1000},
+};
+
+static LedPattern_t OnLedPattern = {
+    .step_count = 1,
+    .steps = OnPattern,
+};
+
 static LedContext_t wifi_led_ctx = {
     .pin_index = LED_WIFI,
     .pattern = &NoBlinkLedPattern,
@@ -315,6 +324,7 @@ static int appGpio_EventBusCallback(uint32_t event_code, const void *data, size_
             calib_led_ctx.curr_step = 0;
             break;
         case APP_EVENT_TOF_CALIB_STATUS:
+            EZINFO("Get calibrate status");
             calib_status = (uint8_t*)data;
             if(calib_status != NULL && (*calib_status == 0 || *calib_status == -1))
             {
@@ -323,6 +333,23 @@ static int appGpio_EventBusCallback(uint32_t event_code, const void *data, size_
                 calib_led_ctx.curr_step = 0;
             }
             break;
+        case APP_EVENT_TOF_OBJ_DETECT_STATUS:
+        {
+            bool obj_detected = *(bool*)data;
+            if(obj_detected == true)
+            {
+                calib_led_ctx.pattern = &OnLedPattern;
+                calib_led_ctx.next_tick_ms = 0;
+                calib_led_ctx.curr_step = 0;
+            }
+            else
+            {
+                calib_led_ctx.pattern = &NoBlinkLedPattern;
+                calib_led_ctx.next_tick_ms = 0;
+                calib_led_ctx.curr_step = 0;
+            }
+            break;
+        }
         default:
             EZTRACE("Event bus: Unknown event %ld", event_code);
             break;

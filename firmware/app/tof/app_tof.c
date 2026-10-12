@@ -48,6 +48,8 @@ static VL53L0X_Dev_t tof_sensor;
 static ezEventListener_t event_listener;
 static AppTofState_t app_state = STATE_IDLE;
 static uint32_t dectected_distance_mm = 0;
+static uint32_t measured_distance_mm = 0;
+static bool detected_distance_exist = false;
 
 static void appTof_PrintError(VL53L0X_Error Status);
 static void appTof_Task(void* arg);
@@ -56,6 +58,7 @@ static VL53L0X_Error appTof_Calibration(VL53L0X_Dev_t *pMyDevice);
 static VL53L0X_Error appTof_SetupDevice(VL53L0X_Dev_t *pMyDevice);
 static int appTof_EventBusCallback(uint32_t event_code, const void *data, size_t data_size);
 static void appTof_Calibrate(uint32_t delay_ms);
+static void appTof_Measure(uint32_t delay_ms);
 
 /**
  * @brief Run a quick 10-shot ranging test and print results via the debug log.
@@ -168,6 +171,19 @@ bool appTof_Init(void)
         appEventBus_Subscribe(&event_listener);
     }
 
+    size_t len = sizeof(dectected_distance_mm);
+    detected_distance_exist = appStorage_GetData(
+        STORAGE_TYPE_DETECTED_DISTANCE_MM,
+        (uint8_t*)&dectected_distance_mm,
+        &len,
+        100);
+
+    if(detected_distance_exist == true)
+    {
+        EZINFO("Object detected at %d mm", dectected_distance_mm);
+        app_state = STATE_DETECT;
+    }
+    
     return true;
 }
 
@@ -194,7 +210,10 @@ static void appTof_Task(void* arg)
                 vTaskDelay(1000/portTICK_PERIOD_MS);
                 break;
             case STATE_DETECT:
-                vTaskDelay(1000/portTICK_PERIOD_MS);
+                if(detected_distance_exist == true)
+                {
+                    appTof_Measure(50);
+                }
                 break;
             case STATE_CALIBRATE:
                 appTof_Calibrate(50);
@@ -226,9 +245,64 @@ static void appTof_Calibrate(uint32_t delay_ms)
             count = 0;
             sum_distance_mm = 0;
             uint8_t calib_status = 0;
-            EZINFO("detected distance: %d mm", dectected_distance_mm);
-            appEventBus_Notify(APP_EVENT_TOF_CALIB_STATUS, &calib_status, sizeof(calib_status));
+            
+            EZINFO("Calibrate done. Distance: %d mm", dectected_distance_mm);
+            detected_distance_exist = true;
+            
+            if(appStorage_SetData(
+                STORAGE_TYPE_DETECTED_DISTANCE_MM,
+                (uint8_t*)&dectected_distance_mm,
+                sizeof(dectected_distance_mm),
+                100) == false)
+            {
+                EZERROR("set detected distace failed");
+            }
+
+            appEventBus_Notify(
+                APP_EVENT_TOF_CALIB_STATUS,
+                &calib_status,
+                sizeof(calib_status));
+            
             app_state = STATE_DETECT;
+        }
+    }
+    else
+    {
+        appTof_PrintError(status);
+        appTof_PrintRangeStatus(&measurement);
+    }
+    vTaskDelay(delay_ms/portTICK_PERIOD_MS);
+}
+
+static void appTof_Measure(uint32_t delay_ms)
+{
+    static uint8_t count = 0;
+    static uint32_t sum_distance_mm = 0;
+    VL53L0X_Error status = VL53L0X_ERROR_NONE;
+    VL53L0X_RangingMeasurementData_t measurement;
+
+    status = VL53L0X_PerformSingleRangingMeasurement(&tof_sensor, &measurement);
+    if(status == VL53L0X_ERROR_NONE && measurement.RangeStatus == 0)
+    {
+        sum_distance_mm = sum_distance_mm + measurement.RangeMilliMeter;
+        count++;
+        if(count >= 10)
+        {
+            measured_distance_mm = sum_distance_mm/count;;
+            count = 0;
+            sum_distance_mm = 0;
+            bool detected = false;
+            
+            if(measured_distance_mm < (dectected_distance_mm + 5))
+            {
+                detected = true;
+                EZDEBUG("object detected");
+            }
+
+            appEventBus_Notify(
+                APP_EVENT_TOF_OBJ_DETECT_STATUS,
+                &detected,
+                sizeof(detected));
         }
     }
     else
@@ -394,7 +468,6 @@ static int appTof_EventBusCallback(uint32_t event_code, const void *data, size_t
         case APP_EVENT_TOF_START_CALIB:
             EZDEBUG("Received APP_EVENT_TOF_START_CALIB event");
             app_state = STATE_CALIBRATE;
-            appEventBus_Notify(APP_EVENT_TOF_CALIB_STATUS, &status, sizeof(status));
             break;
         default:
             break;

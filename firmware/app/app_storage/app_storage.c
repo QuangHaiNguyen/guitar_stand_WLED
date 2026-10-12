@@ -31,6 +31,7 @@ typedef struct{
     bool hostname_stored;
     bool led_configuration_stored;
     bool led_colors_stored;
+    bool detected_dist_mm_stored;
 }Metadata_t;
 
 
@@ -48,6 +49,7 @@ static const char* storage_type_look_up[STORAGE_TYPE_END] = {
     "host_name",
     "num_of_leds",
     "led_colors",
+    "detected_dist",
 };
 
 
@@ -225,6 +227,20 @@ bool appStorage_GetData(STORAGE_TYPE type, uint8_t* buffer, size_t* length, uint
                 }
             }
             break;
+        case STORAGE_TYPE_DETECTED_DISTANCE_MM:
+            if(metadata.detected_dist_mm_stored == false)
+            {
+                EZWARNING("detected distance was not stored");
+            }
+            else
+            {
+                err = nvs_get_u32(nvs, storage_type_look_up[type], (uint32_t*)buffer);
+                if(err == ESP_OK)
+                {
+                    success = true;
+                }
+            }
+            break;
         default:
             EZWARNING("Invalid storage type");
     }
@@ -327,9 +343,31 @@ bool appStorage_SetData(STORAGE_TYPE type, const uint8_t* data, size_t length, u
                 metadata_updated = true;
             }
             break;
+        case STORAGE_TYPE_DETECTED_DISTANCE_MM:
+            err = nvs_set_u32(nvs, storage_type_look_up[type], *(const uint32_t*)data);
+            if(err == ESP_OK)
+            {
+                success = true;
+                metadata.detected_dist_mm_stored = true;
+                metadata_updated = true;
+            }
+            break;
         default:
             EZWARNING("Invalid storage type");
     }
+
+    if(success == true)
+    {
+        err = nvs_commit(nvs);
+        if(err != ESP_OK)
+        {
+            EZERROR("Failed to commit NVS: %s", esp_err_to_name(err));
+            success = false;
+            metadata_updated = false;
+        }
+    }
+
+    nvs_close(nvs);
 
     if(xSemaphoreGive(xSemaphore) != pdTRUE)
     {
@@ -372,6 +410,8 @@ bool appStorage_DeleteData(STORAGE_TYPE type, uint32_t timeout_ms)
             break;
         case STORAGE_TYPE_LED_COLORS:
             break;
+        case STORAGE_TYPE_DETECTED_DISTANCE_MM:
+            break;
         default:
             EZWARNING("Invalid storage type");
             return false;
@@ -400,6 +440,7 @@ static bool appStorage_SetDefaultMetadata(Metadata_t* meta, uint32_t timeout_ms)
     meta->led_configuration_stored = false;
     meta->led_colors_stored = false;
     meta->hostname_stored = false;
+    meta->detected_dist_mm_stored = false;
 
     return appStorage_SetData(STORAGE_TYPE_METADATA, (const uint8_t*)meta, sizeof(Metadata_t), timeout_ms);
 }
